@@ -1,0 +1,67 @@
+"""
+ADMIN — Sektör numara yönetimi, kullanıcı listesi
+"""
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models import db, User, SektorNumara, IslemLog
+
+bp = Blueprint('admin', __name__, url_prefix='/api/admin')
+
+
+def _admin_kontrol():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    return user and user.email.endswith('@admin.com')  # basit admin kontrolü
+
+
+@bp.route('/kullanicilar', methods=['GET'])
+@jwt_required()
+def kullanicilar():
+    if not _admin_kontrol():
+        return jsonify({'success': False}), 403
+    users = User.query.order_by(User.kayit_tarihi.desc()).all()
+    return jsonify({'success': True, 'kullanicilar': [u.to_dict() for u in users]})
+
+
+@bp.route('/sektor-numaralar', methods=['GET'])
+@jwt_required()
+def sektor_numaralar_listele():
+    if not _admin_kontrol():
+        return jsonify({'success': False}), 403
+    numaralar = SektorNumara.query.all()
+    return jsonify({'success': True, 'numaralar': [{
+        'id': n.id, 'phone_number_id': n.phone_number_id,
+        'wa_no': n.wa_no, 'sektor': n.sektor,
+        'aciklama': n.aciklama, 'aktif': n.aktif,
+    } for n in numaralar]})
+
+
+@bp.route('/sektor-numaralar', methods=['POST'])
+@jwt_required()
+def sektor_numara_ekle():
+    if not _admin_kontrol():
+        return jsonify({'success': False}), 403
+    d = request.get_json() or {}
+    sn = SektorNumara(
+        phone_number_id=d['phone_number_id'],
+        wa_no=d['wa_no'],
+        sektor=d['sektor'],
+        aciklama=d.get('aciklama', ''),
+        access_token=d.get('access_token', ''),
+    )
+    db.session.add(sn)
+    db.session.commit()
+    return jsonify({'success': True, 'id': sn.id}), 201
+
+
+@bp.route('/islem-log', methods=['GET'])
+@jwt_required()
+def islem_log():
+    if not _admin_kontrol():
+        return jsonify({'success': False}), 403
+    logs = IslemLog.query.order_by(IslemLog.tarih.desc()).limit(200).all()
+    return jsonify({'success': True, 'islemler': [{
+        'id': l.id, 'telefon': l.telefon, 'sektor': l.sektor,
+        'islem_tipi': l.islem_tipi, 'durum': l.durum,
+        'kredi': l.kredi_kullanim, 'tarih': l.tarih.isoformat(),
+    } for l in logs]})
