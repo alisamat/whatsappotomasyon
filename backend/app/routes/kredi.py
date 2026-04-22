@@ -35,10 +35,16 @@ def satin_al():
         return jsonify({'success': False, 'message': 'Kullanıcı bulunamadı.'}), 404
 
     d = request.get_json() or {}
-    paket_id = d.get('paket_id')
-    paket = PAKETLER.get(paket_id)
-    if not paket:
-        return jsonify({'success': False, 'message': 'Geçersiz paket.'}), 400
+
+    # Frontend doğrudan kredi+fiyat gönderir (paket_id yerine)
+    if 'kredi' in d and 'fiyat' in d:
+        paket = {'ad': f"{d['kredi']} Kredi", 'kredi': float(d['kredi']), 'fiyat': float(d['fiyat'])}
+        paket_id = f"kredi_{d['kredi']}"
+    else:
+        paket_id = d.get('paket_id')
+        paket = PAKETLER.get(paket_id)
+        if not paket:
+            return jsonify({'success': False, 'message': 'Geçersiz paket.'}), 400
 
     options = {
         'api_key':    current_app.config['IYZICO_API_KEY'],

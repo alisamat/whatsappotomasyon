@@ -78,3 +78,51 @@ def me():
     if not user:
         return jsonify({'success': False}), 404
     return jsonify({'success': True, 'user': user.to_dict()})
+
+
+@bp.route('/profil', methods=['PUT'])
+@jwt_required()
+def profil_guncelle():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({'success': False, 'message': 'Kullanıcı bulunamadı.'}), 404
+    d = request.get_json() or {}
+    ad_soyad = d.get('ad_soyad', '').strip()
+    email    = d.get('email', '').strip().lower()
+    telefon  = d.get('telefon', '').strip()
+    sektor   = d.get('sektor', user.sektor)
+
+    if not all([ad_soyad, email, telefon]):
+        return jsonify({'success': False, 'message': 'Tüm alanlar zorunludur.'}), 400
+
+    # E-posta çakışma kontrolü
+    cakisan = User.query.filter(User.email == email, User.id != user.id).first()
+    if cakisan:
+        return jsonify({'success': False, 'message': 'Bu e-posta başka bir hesapta kayıtlı.'}), 400
+
+    user.ad_soyad = ad_soyad
+    user.email    = email
+    user.telefon  = telefon
+    user.sektor   = sektor
+    db.session.commit()
+    return jsonify({'success': True, 'user': user.to_dict()})
+
+
+@bp.route('/sifre-degistir', methods=['PUT'])
+@jwt_required()
+def sifre_degistir():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({'success': False, 'message': 'Kullanıcı bulunamadı.'}), 404
+    d = request.get_json() or {}
+    mevcut = d.get('mevcut', '')
+    yeni   = d.get('yeni', '')
+
+    if not check_password_hash(user.sifre_hash, mevcut):
+        return jsonify({'success': False, 'message': 'Mevcut şifre hatalı.'}), 400
+    if len(yeni) < 6:
+        return jsonify({'success': False, 'message': 'Yeni şifre en az 6 karakter olmalı.'}), 400
+
+    user.sifre_hash = generate_password_hash(yeni)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Şifre güncellendi.'})
