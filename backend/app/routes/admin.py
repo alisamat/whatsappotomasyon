@@ -1,7 +1,8 @@
 """
 ADMIN — Sektör numara yönetimi, kullanıcı listesi
 """
-from flask import Blueprint, request, jsonify
+import os
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import db, User, SektorNumara, IslemLog
 
@@ -48,6 +49,28 @@ def sektor_numara_ekle():
         sektor=d['sektor'],
         aciklama=d.get('aciklama', ''),
         access_token=d.get('access_token', ''),
+    )
+    db.session.add(sn)
+    db.session.commit()
+    return jsonify({'success': True, 'id': sn.id}), 201
+
+
+@bp.route('/seed', methods=['POST'])
+def seed():
+    """Tek seferlik: SektorNumara kaydı ekle. SECRET_KEY ile korunuyor."""
+    if request.headers.get('X-Admin-Key') != current_app.config.get('SECRET_KEY'):
+        return jsonify({'success': False}), 403
+    d = request.get_json() or {}
+    existing = SektorNumara.query.filter_by(phone_number_id=d.get('phone_number_id')).first()
+    if existing:
+        return jsonify({'success': False, 'message': 'Zaten var.'}), 409
+    sn = SektorNumara(
+        phone_number_id=d['phone_number_id'],
+        wa_no=d['wa_no'],
+        sektor=d['sektor'],
+        aciklama=d.get('aciklama', ''),
+        access_token=d.get('access_token', ''),
+        aktif=True,
     )
     db.session.add(sn)
     db.session.commit()
