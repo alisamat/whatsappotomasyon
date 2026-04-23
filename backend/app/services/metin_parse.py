@@ -39,7 +39,7 @@ def metin_isle(metin: str) -> dict:
     """
     api_key = os.environ.get('GEMINI_API_KEY', '')
     if not api_key:
-        return _regex_ile_isle(metin)
+        return _regex_parse(metin)
 
     try:
         payload = {
@@ -62,7 +62,7 @@ def metin_isle(metin: str) -> dict:
         return json.loads(text)
     except Exception as e:
         logger.warning(f'[MetinParse] Gemini hatası, regex fallback: {e}')
-        return _regex_ile_isle(metin)
+        return _regex_parse(metin)
 
 
 def alici_parse_et(metin: str) -> dict | None:
@@ -73,15 +73,18 @@ def alici_parse_et(metin: str) -> dict | None:
     return None
 
 
-def _regex_parse(metin: str) -> dict | None:
-    """Basit regex tabanlı fallback."""
+def _regex_parse(metin: str) -> dict:
+    """Basit regex tabanlı fallback — her zaman dict döner."""
     tel_match = re.search(r'(\+?90|0)?[5][0-9]{9}', metin.replace(' ', ''))
-    if not tel_match:
-        return None
-    telefon = tel_match.group()
-    ad = re.sub(r'(\+?90|0)?[5][0-9]{9}', '', metin).strip()
-    ad = re.sub(r'[,;:|]', ' ', ad).strip()
-    ad = ' '.join(ad.split())
-    if len(ad) < 2:
-        return None
-    return {'ad': ad, 'telefon': telefon, 'adres': ''}
+    if tel_match:
+        telefon = tel_match.group()
+        ad = re.sub(r'(\+?90|0)?[5][0-9]{9}', '', metin).strip()
+        ad = re.sub(r'[,;:|]', ' ', ad).strip()
+        ad = ' '.join(ad.split())
+        if ad:
+            return {'tip': 'alici', 'ad': ad, 'telefon': telefon, 'adres': ''}
+    # Sadece isim var mı? (2+ kelime, harf, telefon yok)
+    kelimeler = metin.strip().split()
+    if 2 <= len(kelimeler) <= 4 and all(k.replace('ğ','').replace('ş','').replace('ç','').replace('ı','').replace('ö','').replace('ü','').isalpha() for k in kelimeler):
+        return {'tip': 'alici', 'ad': metin.strip(), 'telefon': '', 'adres': ''}
+    return {'tip': 'hicbiri', 'ad': '', 'telefon': '', 'adres': ''}
