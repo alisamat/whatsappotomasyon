@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-META_API_VERSION = 'v19.0'
+META_API_VERSION = 'v25.0'
 GRAPH_URL = f'https://graph.facebook.com/{META_API_VERSION}'
 
 
