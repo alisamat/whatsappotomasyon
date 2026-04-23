@@ -30,10 +30,12 @@ class Config:
     # Gemini OCR
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
-    # iyzico ödeme
-    IYZICO_API_KEY    = os.environ.get('IYZICO_API_KEY', '')
-    IYZICO_SECRET_KEY = os.environ.get('IYZICO_SECRET_KEY', '')
-    IYZICO_BASE_URL   = os.environ.get('IYZICO_BASE_URL', 'https://sandbox-api.iyzipay.com')
+    # KuveytTürk Sanal POS
+    KUVEYTTURK_MERCHANT_ID = os.environ.get('KUVEYTTURK_MERCHANT_ID', '496')
+    KUVEYTTURK_CUSTOMER_ID = os.environ.get('KUVEYTTURK_CUSTOMER_ID', '400235')
+    KUVEYTTURK_USERNAME    = os.environ.get('KUVEYTTURK_USERNAME', 'apitest')
+    KUVEYTTURK_PASSWORD    = os.environ.get('KUVEYTTURK_PASSWORD', 'api123')
+    BASE_URL               = os.environ.get('BASE_URL', 'https://whatsappotomasyon-production.up.railway.app')
 
     # Kredi maliyetleri (sektör bazlı)
     ISLEM_MALIYETLERI = {
