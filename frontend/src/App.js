@@ -8,6 +8,7 @@ import Kayit      from './components/Kayit';
 import Panel      from './components/Panel';
 import Kredi      from './components/Kredi';
 import Profil     from './components/Profil';
+import Gizlilik  from './components/Gizlilik';
 
 // ── Auth Context ─────────────────────────────────────────────────────────────
 export const AuthContext = createContext(null);
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/panel"         element={<Koruma><Panel /></Koruma>} />
           <Route path="/kredi"         element={<Koruma><Kredi /></Koruma>} />
           <Route path="/profil"        element={<Koruma><Profil /></Koruma>} />
+          <Route path="/gizlilik"       element={<Gizlilik />} />
           <Route path="*"              element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
