@@ -12,19 +12,21 @@ logger = logging.getLogger(__name__)
 FRONTEND_URL = 'https://whatsappotomasyon.com'  # .env'den okunacak
 
 
-def _normalize(tel: str) -> str:
-    t = tel.strip().replace('+', '')
-    if t.startswith('0') and len(t) == 11:
-        return '90' + t[1:]
-    return t
+def _telefon_formatlari(tel: str) -> list:
+    """905xxxxxxxxx için tüm olası formatları döndür."""
+    t = tel.strip().replace('+', '').replace(' ', '')
+    if t.startswith('0'):
+        t = '90' + t[1:]
+    # t artık 905xxxxxxxxx formatında
+    return [t, '+' + t, '0' + t[2:]]  # 905xxx, +905xxx, 05xxx
 
 
 def kayitli_mi(telefon: str) -> User | None:
     """Telefon numarasına göre kayıtlı kullanıcı döndür."""
-    norm = _normalize(telefon)
+    formatlar = _telefon_formatlari(telefon)
     return User.query.filter(
         User.aktif == True,
-        db.or_(User.telefon == norm, User.telefon == telefon)
+        User.telefon.in_(formatlar)
     ).first()
 
 
