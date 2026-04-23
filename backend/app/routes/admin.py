@@ -77,6 +77,29 @@ def seed():
     return jsonify({'success': True, 'id': sn.id}), 201
 
 
+@bp.route('/seed', methods=['PATCH'])
+def seed_update():
+    """Mevcut SektorNumara kaydını güncelle (access_token vb.)."""
+    if request.headers.get('X-Admin-Key') != current_app.config.get('SECRET_KEY'):
+        return jsonify({'success': False}), 403
+    d = request.get_json() or {}
+    sn = SektorNumara.query.filter_by(phone_number_id=d.get('phone_number_id')).first()
+    if not sn:
+        return jsonify({'success': False, 'message': 'Kayıt bulunamadı.'}), 404
+    if 'access_token' in d:
+        sn.access_token = d['access_token']
+    if 'wa_no' in d:
+        sn.wa_no = d['wa_no']
+    if 'sektor' in d:
+        sn.sektor = d['sektor']
+    if 'aciklama' in d:
+        sn.aciklama = d['aciklama']
+    if 'aktif' in d:
+        sn.aktif = d['aktif']
+    db.session.commit()
+    return jsonify({'success': True}), 200
+
+
 @bp.route('/islem-log', methods=['GET'])
 @jwt_required()
 def islem_log():
