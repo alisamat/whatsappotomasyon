@@ -14,27 +14,32 @@ _API_URL = (
     'gemini-2.5-flash:generateContent?key={key}'
 )
 
-_PROMPT = """Aşağıdaki mesajdan alıcı kişi bilgilerini çıkar.
-Varsa şu alanları JSON olarak döndür:
-- "ad": kişinin adı soyadı
-- "telefon": telefon numarası (varsa)
-- "adres": adres (varsa)
+_PROMPT = """Aşağıdaki mesajı analiz et ve şu JSON formatını döndür:
 
-Eğer bu mesaj bir kişi bilgisi içermiyorsa {"alici_yok": true} döndür.
-Sadece JSON döndür, başka açıklama yazma.
+{{
+  "tip": "alici" | "adres" | "hicbiri",
+  "ad": "kişi adı soyadı (varsa)",
+  "telefon": "telefon numarası (varsa)",
+  "adres": "sokak/mahalle/şehir adresi (varsa)"
+}}
+
+Kurallar:
+- Mesajda kişi adı veya telefon varsa → "tip": "alici"
+- Mesajda sadece adres/konum bilgisi varsa (sokak, mahalle, şehir, ilçe vb.) → "tip": "adres"
+- Hiçbiri yoksa → "tip": "hicbiri"
+- Sadece JSON döndür, başka açıklama yazma.
 
 Mesaj: {metin}"""
 
 
-def alici_parse_et(metin: str) -> dict | None:
+def metin_isle(metin: str) -> dict:
     """
-    Serbest metinden alıcı bilgisi çıkar.
-    Başarılıysa {'ad': ..., 'telefon': ..., 'adres': ...} döner.
-    Alıcı yoksa None döner.
+    Serbest metni analiz eder.
+    Dönüş: {'tip': 'alici'|'adres'|'hicbiri', 'ad', 'telefon', 'adres'}
     """
     api_key = os.environ.get('GEMINI_API_KEY', '')
     if not api_key:
-        return _regex_parse(metin)
+        return _regex_ile_isle(metin)
 
     try:
         payload = {
@@ -54,20 +59,18 @@ def alici_parse_et(metin: str) -> dict | None:
         if text.startswith('```'):
             text = re.sub(r'^```(?:json)?\s*', '', text)
             text = re.sub(r'\s*```$', '', text)
-
-        result = json.loads(text)
-        if result.get('alici_yok'):
-            return None
-        if not result.get('ad'):
-            return None
-        return {
-            'ad': result.get('ad', ''),
-            'telefon': result.get('telefon', ''),
-            'adres': result.get('adres', ''),
-        }
+        return json.loads(text)
     except Exception as e:
         logger.warning(f'[MetinParse] Gemini hatası, regex fallback: {e}')
-        return _regex_parse(metin)
+        return _regex_ile_isle(metin)
+
+
+def alici_parse_et(metin: str) -> dict | None:
+    """Geriye dönük uyumluluk için."""
+    sonuc = metin_isle(metin)
+    if sonuc.get('tip') == 'alici' and sonuc.get('ad'):
+        return {'ad': sonuc['ad'], 'telefon': sonuc.get('telefon', ''), 'adres': sonuc.get('adres', '')}
+    return None
 
 
 def _regex_parse(metin: str) -> dict | None:

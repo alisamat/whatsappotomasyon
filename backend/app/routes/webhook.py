@@ -4,12 +4,13 @@ GET  /api/webhook  — Meta doğrulama
 POST /api/webhook  — Gelen mesajlar
 """
 import logging
+from urllib.parse import quote
 from flask import Blueprint, request, jsonify, current_app
 from app.models import db, SektorNumara
 from app.services import whatsapp_client as wa
 from app.services import kayit_akisi as kayit
 from app.services.sektorler import handler_al
-from app.services.metin_parse import alici_parse_et
+from app.services.metin_parse import metin_isle
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('webhook', __name__, url_prefix='/api/webhook')
@@ -121,13 +122,24 @@ def gelen_mesaj():
                                 f'💳 Kredi bakiyeniz: {user.kredi:.0f}')
                 return jsonify({'status': 'ok'}), 200
             else:
-                # Alıcı bilgisi metinden çıkarılmaya çalışılır
-                alici = alici_parse_et(metin)
-                if alici:
-                    session['alici'] = alici
+                sonuc = metin_isle(metin)
+                if sonuc.get('tip') == 'alici' and sonuc.get('ad'):
+                    session['alici'] = {
+                        'ad': sonuc['ad'],
+                        'telefon': sonuc.get('telefon', ''),
+                        'adres': sonuc.get('adres', ''),
+                    }
                     wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
-                                    f'👤 Alıcı bilgisi alındı: {alici["ad"]}'
-                                    + (f' ({alici["telefon"]})' if alici.get('telefon') else ''))
+                                    f'👤 Alıcı bilgisi alındı: {sonuc["ad"]}'
+                                    + (f' ({sonuc["telefon"]})' if sonuc.get('telefon') else ''))
+                elif sonuc.get('tip') == 'adres' and sonuc.get('adres'):
+                    session['konum'] = {
+                        'lat': None, 'lng': None,
+                        'ad': '', 'adres': sonuc['adres'],
+                        'google_maps': f'https://maps.google.com/?q={quote(sonuc["adres"])}',
+                    }
+                    wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
+                                    f'📍 Adres alındı: {sonuc["adres"]}')
                 else:
                     wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
                                     handler.beklenen_veri_mesaji())
