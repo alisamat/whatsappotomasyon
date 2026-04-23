@@ -19,7 +19,7 @@ class EmlakHandler(BaseSektorHandler):
     SEKTOR_KODU    = 'emlak'
     KREDI_MALIYETI = 5
     MIN_FOTOGRAF   = 1
-    MAX_FOTOGRAF   = 3
+    MAX_FOTOGRAF   = 4
 
     def session_tamam_mi(self, session: dict) -> bool:
         return (
