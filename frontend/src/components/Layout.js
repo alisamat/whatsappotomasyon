@@ -40,6 +40,8 @@ export default function Layout({ children }) {
             {link('/panel', 'Panel')}
             {link('/kredi', 'Kredi')}
             {link('/profil', 'Profil')}
+            {user.sektor === 'emlak' && link('/emlak-profil', 'Emlak Profili')}
+            {user.sektor === 'emlak' && link('/yer-gostermeler', 'Kayıtlar')}
             <span style={{ color: '#64748b', fontSize: 13 }}>
               💳 {user.kredi?.toFixed(0)} kr
             </span>

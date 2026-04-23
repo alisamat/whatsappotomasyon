@@ -1,7 +1,7 @@
 """
 VERİ MODELLERİ
 """
-from datetime import datetime
+from datetime import datetime, date
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -75,6 +75,82 @@ class KayitBekleyen(db.Model):
     token         = db.Column(db.String(64), unique=True)      # kayıt linki tokeni
     link_gonderildi = db.Column(db.DateTime, default=datetime.utcnow)
     tamamlandi    = db.Column(db.Boolean, default=False)
+
+
+# ── Emlakçı Profili ───────────────────────────────────────────────────────────
+class EmlakciProfil(db.Model):
+    __tablename__ = 'emlakci_profil'
+    id              = db.Column(db.Integer, primary_key=True)
+    user_id         = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    ad_soyad        = db.Column(db.String(150), nullable=False)
+    isletme_adi     = db.Column(db.String(200))
+    is_adresi       = db.Column(db.Text)
+    telefon         = db.Column(db.String(30))
+    lisans_no       = db.Column(db.String(100))
+    vergi_dairesi   = db.Column(db.String(100))
+    vergi_no        = db.Column(db.String(50))
+    komisyon_kira_ay       = db.Column(db.Integer, default=1)
+    komisyon_satis_yuzde   = db.Column(db.Float, default=2.0)
+    yetki_sehri     = db.Column(db.String(100))
+    guncelleme      = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship('User', backref=db.backref('emlakci_profil', uselist=False))
+
+    def to_dict(self):
+        return {
+            'ad_soyad': self.ad_soyad, 'isletme_adi': self.isletme_adi,
+            'is_adresi': self.is_adresi, 'telefon': self.telefon,
+            'lisans_no': self.lisans_no, 'vergi_dairesi': self.vergi_dairesi,
+            'vergi_no': self.vergi_no, 'komisyon_kira_ay': self.komisyon_kira_ay,
+            'komisyon_satis_yuzde': self.komisyon_satis_yuzde, 'yetki_sehri': self.yetki_sehri,
+        }
+
+
+# ── Yer Gösterme Kaydı ────────────────────────────────────────────────────────
+class YerGosterme(db.Model):
+    __tablename__ = 'yer_gosterme'
+    id              = db.Column(db.Integer, primary_key=True)
+    user_id         = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    islem_log_id    = db.Column(db.Integer, db.ForeignKey('islem_log.id'), nullable=True)
+    # Alıcı
+    alici_ad_soyad  = db.Column(db.String(150))
+    alici_adres     = db.Column(db.Text)
+    alici_tc_no     = db.Column(db.String(20))
+    alici_telefon   = db.Column(db.String(30))
+    # Taşınmaz
+    tasinmaz_sehir  = db.Column(db.String(100))
+    tasinmaz_ilce   = db.Column(db.String(100))
+    tasinmaz_mahalle = db.Column(db.String(150))
+    tasinmaz_ada    = db.Column(db.String(50))
+    tasinmaz_parsel = db.Column(db.String(50))
+    tasinmaz_adres  = db.Column(db.Text)
+    tasinmaz_alan   = db.Column(db.String(50))
+    konum_lat       = db.Column(db.Float)
+    konum_lng       = db.Column(db.Float)
+    # İşlem
+    islem_turu      = db.Column(db.String(20))   # kira | satis
+    fiyat           = db.Column(db.String(100))
+    komisyon_kira_ay       = db.Column(db.Integer)
+    komisyon_satis_yuzde   = db.Column(db.Float)
+    # Belge
+    sablon_no       = db.Column(db.Integer, default=1)
+    fotografli_mi   = db.Column(db.Boolean, default=True)
+    pdf_token       = db.Column(db.String(64))
+    pdf_url         = db.Column(db.String(500))
+    sozlesme_tarihi = db.Column(db.Date, default=date.today)
+    olusturma       = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship('User', backref='yer_gostermeler')
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'alici_ad_soyad': self.alici_ad_soyad,
+            'alici_telefon': self.alici_telefon, 'alici_tc_no': self.alici_tc_no,
+            'tasinmaz_adres': self.tasinmaz_adres, 'tasinmaz_sehir': self.tasinmaz_sehir,
+            'tasinmaz_ilce': self.tasinmaz_ilce, 'islem_turu': self.islem_turu,
+            'fiyat': self.fiyat, 'sablon_no': self.sablon_no,
+            'fotografli_mi': self.fotografli_mi, 'pdf_url': self.pdf_url,
+            'olusturma': self.olusturma.isoformat(),
+            'sozlesme_tarihi': self.sozlesme_tarihi.isoformat() if self.sozlesme_tarihi else None,
+        }
 
 
 # ── Kredi satın alma ──────────────────────────────────────────────────────────

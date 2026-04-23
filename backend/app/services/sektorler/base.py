@@ -37,3 +37,8 @@ class BaseSektorHandler(ABC):
     def beklenen_veri_mesaji(self) -> str:
         """Kullanıcıya ne göndermesi gerektiğini anlatan mesaj."""
         return 'Lütfen gerekli bilgileri gönderin.'
+
+    def mesaj_isle(self, telefon: str, mesaj: dict, session: dict,
+                   phone_number_id: str, access_token: str, user) -> bool:
+        """State machine mesaj işleyici. Tamamlanınca True döner. Alt sınıflar override eder."""
+        return False

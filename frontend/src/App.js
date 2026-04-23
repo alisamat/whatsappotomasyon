@@ -2,13 +2,15 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import api from './api';
 
-import AnaSayfa   from './components/AnaSayfa';
-import Giris      from './components/Giris';
-import Kayit      from './components/Kayit';
-import Panel      from './components/Panel';
-import Kredi      from './components/Kredi';
-import Profil     from './components/Profil';
-import Gizlilik  from './components/Gizlilik';
+import AnaSayfa       from './components/AnaSayfa';
+import Giris          from './components/Giris';
+import Kayit          from './components/Kayit';
+import Panel          from './components/Panel';
+import Kredi          from './components/Kredi';
+import Profil         from './components/Profil';
+import Gizlilik       from './components/Gizlilik';
+import EmlakProfil    from './components/EmlakProfil';
+import YerGostermeler from './components/YerGostermeler';
 
 // ── Auth Context ─────────────────────────────────────────────────────────────
 export const AuthContext = createContext(null);
@@ -67,8 +69,10 @@ export default function App() {
           <Route path="/kayit/:token"  element={<Kayit />} />
           <Route path="/panel"         element={<Koruma><Panel /></Koruma>} />
           <Route path="/kredi"         element={<Koruma><Kredi /></Koruma>} />
-          <Route path="/profil"        element={<Koruma><Profil /></Koruma>} />
-          <Route path="/gizlilik"       element={<Gizlilik />} />
+          <Route path="/profil"           element={<Koruma><Profil /></Koruma>} />
+          <Route path="/gizlilik"        element={<Gizlilik />} />
+          <Route path="/emlak-profil"    element={<Koruma><EmlakProfil /></Koruma>} />
+          <Route path="/yer-gostermeler" element={<Koruma><YerGostermeler /></Koruma>} />
           <Route path="*"              element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
