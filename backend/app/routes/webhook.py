@@ -88,8 +88,7 @@ def gelen_mesaj():
             if media_id:
                 foto_bytes = wa.medya_indir(media_id, access_token)
                 if foto_bytes and len(session['fotograflar']) < handler.MAX_FOTOGRAF:
-                    # TODO: fotoğrafı S3'e yükle, URL'yi session'a ekle
-                    session['fotograflar'].append(f'media:{media_id}')
+                    session['fotograflar'].append(foto_bytes)
                     kalan = handler.MAX_FOTOGRAF - len(session['fotograflar'])
                     wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
                                     f'📸 Fotoğraf alındı ({len(session["fotograflar"])}/{handler.MAX_FOTOGRAF}). '

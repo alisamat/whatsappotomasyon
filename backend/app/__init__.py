@@ -15,12 +15,13 @@ def create_app():
     Migrate(app, db)
     CORS(app, resources={r'/api/*': {'origins': '*'}})
 
-    from app.routes import webhook, auth, kredi, admin, panel
+    from app.routes import webhook, auth, kredi, admin, panel, belge
     app.register_blueprint(webhook.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(kredi.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(panel.bp)
+    app.register_blueprint(belge.bp)
 
     @app.route('/health')
     def health():

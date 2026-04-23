@@ -137,11 +137,14 @@ class EmlakHandler(BaseSektorHandler):
         hikaye.append(tablo)
         hikaye.append(Spacer(1, 0.5*cm))
 
-        # Fotoğraflar
-        for idx, foto_url in enumerate(session.get('fotograflar', [])[:3], 1):
+        # Fotoğraflar (bytes olarak saklanıyor)
+        for idx, foto in enumerate(session.get('fotograflar', [])[:3], 1):
             try:
-                r = _req.get(foto_url, timeout=15)
-                img_buf = _io.BytesIO(r.content)
+                if isinstance(foto, bytes):
+                    img_buf = _io.BytesIO(foto)
+                else:
+                    r = _req.get(foto, timeout=15)
+                    img_buf = _io.BytesIO(r.content)
                 rl_img = RLImage(img_buf, width=14*cm, height=9*cm)
                 rl_img.hAlign = 'CENTER'
                 hikaye.append(Paragraph(f'Fotoğraf {idx}', normal_stil))
@@ -160,22 +163,13 @@ class EmlakHandler(BaseSektorHandler):
         return buf.getvalue()
 
     def _pdf_yukle(self, pdf_bytes: bytes, telefon: str) -> str | None:
-        """
-        PDF'i geçici depolamaya yükle ve URL döndür.
-        TODO: S3 / Cloudinary / Railway Volume entegrasyonu
-        """
-        # Geçici: dosyayı /tmp'ye kaydet ve statik URL döndür
-        # Gerçek deployment'ta S3 presigned URL kullanın
-        import os, tempfile
+        """PDF'i belge_store'a kaydet ve Railway URL'ini döndür."""
         try:
-            fname = f'yer_gosterme_{telefon}_{datetime.now().strftime("%Y%m%d%H%M%S")}.pdf'
-            tmp_path = os.path.join(tempfile.gettempdir(), fname)
-            with open(tmp_path, 'wb') as f:
-                f.write(pdf_bytes)
-            # TODO: upload to S3 and return real URL
-            # return s3_upload(tmp_path, fname)
-            logger.warning('[Emlak] PDF geçici dosyaya kaydedildi — S3 entegrasyonu gerekli')
-            return None  # S3 entegrasyonu yapılana kadar None döner
+            from flask import current_app
+            from app.services.belge_store import kaydet
+            token = kaydet(pdf_bytes)
+            base_url = current_app.config.get('BASE_URL', '').rstrip('/')
+            return f'{base_url}/api/belge/{token}'
         except Exception as e:
             logger.error(f'[Emlak] PDF yükleme hatası: {e}')
             return None
