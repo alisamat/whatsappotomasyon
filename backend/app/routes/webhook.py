@@ -9,6 +9,7 @@ from app.models import db, SektorNumara
 from app.services import whatsapp_client as wa
 from app.services import kayit_akisi as kayit
 from app.services.sektorler import handler_al
+from app.services.metin_parse import alici_parse_et
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('webhook', __name__, url_prefix='/api/webhook')
@@ -108,19 +109,28 @@ def gelen_mesaj():
                             f'👤 Alıcı bilgisi alındı: {isim}')
 
         elif msg_type == 'text':
-            metin = mesaj.get('text', {}).get('body', '').strip().lower()
-            if metin in ('iptal', 'sıfırla', 'reset', 'yeni'):
+            metin = mesaj.get('text', {}).get('body', '').strip()
+            metin_lower = metin.lower()
+            if metin_lower in ('iptal', 'sıfırla', 'reset', 'yeni'):
                 _session_temizle(gonderen_no)
                 wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
                                 '🔄 Oturum sıfırlandı. Yeni işlem başlatabilirsiniz.')
                 return jsonify({'status': 'ok'}), 200
-            elif metin in ('durum', 'bakiye', 'kredi'):
+            elif metin_lower in ('durum', 'bakiye', 'kredi'):
                 wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
                                 f'💳 Kredi bakiyeniz: {user.kredi:.0f}')
                 return jsonify({'status': 'ok'}), 200
             else:
-                wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
-                                handler.beklenen_veri_mesaji())
+                # Alıcı bilgisi metinden çıkarılmaya çalışılır
+                alici = alici_parse_et(metin)
+                if alici:
+                    session['alici'] = alici
+                    wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
+                                    f'👤 Alıcı bilgisi alındı: {alici["ad"]}'
+                                    + (f' ({alici["telefon"]})' if alici.get('telefon') else ''))
+                else:
+                    wa.mesaj_gonder(phone_number_id, access_token, gonderen_no,
+                                    handler.beklenen_veri_mesaji())
                 return jsonify({'status': 'ok'}), 200
 
         # Yeterli veri var mı? → işlemi başlat
