@@ -9,6 +9,18 @@ from app.models import db, User, KayitBekleyen
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 
+def _normalize_telefon(tel: str) -> str:
+    """Telefon numarasını 905xxxxxxxxx formatına çevir."""
+    t = tel.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    if t.startswith('+90'):
+        return t[1:]
+    if t.startswith('90') and len(t) == 12:
+        return t
+    if t.startswith('0') and len(t) == 11:
+        return '90' + t[1:]
+    return t
+
+
 @bp.route('/kayit', methods=['POST'])
 def kayit():
     """Yeni kullanıcı kaydı (token ile veya direkt)."""
@@ -16,7 +28,7 @@ def kayit():
     token    = d.get('token')  # WhatsApp kayıt linki tokeni
     ad_soyad = d.get('ad_soyad', '').strip()
     email    = d.get('email', '').strip().lower()
-    telefon  = d.get('telefon', '').strip()
+    telefon  = _normalize_telefon(d.get('telefon', ''))
     sifre    = d.get('sifre', '')
     sektor   = d.get('sektor', '')
 
@@ -28,7 +40,7 @@ def kayit():
         bekleyen = KayitBekleyen.query.filter_by(token=token, tamamlandi=False).first()
         if not bekleyen:
             return jsonify({'success': False, 'message': 'Geçersiz veya kullanılmış kayıt linki.'}), 400
-        telefon = bekleyen.telefon
+        telefon = _normalize_telefon(bekleyen.telefon)
         sektor  = sektor or bekleyen.sektor
 
     if User.query.filter_by(email=email).first():

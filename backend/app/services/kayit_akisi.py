@@ -12,9 +12,20 @@ logger = logging.getLogger(__name__)
 FRONTEND_URL = 'https://whatsappotomasyon.com'  # .env'den okunacak
 
 
+def _normalize(tel: str) -> str:
+    t = tel.strip().replace('+', '')
+    if t.startswith('0') and len(t) == 11:
+        return '90' + t[1:]
+    return t
+
+
 def kayitli_mi(telefon: str) -> User | None:
     """Telefon numarasına göre kayıtlı kullanıcı döndür."""
-    return User.query.filter_by(telefon=telefon, aktif=True).first()
+    norm = _normalize(telefon)
+    return User.query.filter(
+        User.aktif == True,
+        db.or_(User.telefon == norm, User.telefon == telefon)
+    ).first()
 
 
 def kayit_linki_gonder(telefon: str, sektor: str,
