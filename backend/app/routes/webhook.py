@@ -4,6 +4,7 @@ GET  /api/webhook  — Meta doğrulama
 POST /api/webhook  — Gelen mesajlar
 """
 import logging
+import os
 from flask import Blueprint, request, jsonify, current_app
 from app.models import db, SektorNumara
 from app.services import whatsapp_client as wa
@@ -60,6 +61,12 @@ def gelen_mesaj():
         phone_number_id = value.get('metadata', {}).get('phone_number_id', '')
         mesaj           = messages[0]
         gonderen_no     = mesaj.get('from', '')
+
+        # Bu webhook'a ait olmayan numaraları atla (başka backend'e kayıtlı)
+        skip_ids = set(os.environ.get('SKIP_PHONE_NUMBER_IDS', '1038349959368585').split(','))
+        if phone_number_id in skip_ids:
+            logger.info(f'[Webhook] Atlandi (baska backend): {phone_number_id}')
+            return jsonify({'status': 'ok'}), 200
 
         # Sektör + access_token bul
         sn = SektorNumara.query.filter_by(phone_number_id=phone_number_id, aktif=True).first()
