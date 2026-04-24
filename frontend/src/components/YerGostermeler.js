@@ -101,7 +101,7 @@ export default function YerGostermeler() {
     }
   }, [araFiltre]);
 
-  useEffect(() => { yukle(1); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { yukle(1); }, []);  // eslint-disable-line
 
   const ara = () => {
     setAraFiltre(filtre);
