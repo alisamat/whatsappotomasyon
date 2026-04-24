@@ -723,7 +723,7 @@ class EmlakHandler(BaseSektorHandler):
 
         return (
             '🏠 *Yer Gösterme Sözleşmesi*\n\n'
-            '*1 —* 👤 Kişi kartı · 📍 Konum · 📸 Resim · 💬 _kiralık 15000_ / _satılık 450000_'
+            '*1 —* 👤 Kişi kartı · 📍 Konum · 📸 Resim · 💬 _kiralık 15000_ yada _satılık 450000_'
             + form_satiri +
             '\n*3 —* ✍️ _Ali Veli 0532... Kadıköy kiralık 18000_'
             + komut_satiri
