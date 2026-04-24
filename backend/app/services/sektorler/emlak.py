@@ -9,7 +9,7 @@ from app.services import whatsapp_client as wa
 
 logger = logging.getLogger(__name__)
 
-SESSION_TTL_SAAT = 24  # Bu süre içinde mesaj gelmezse session sıfırlanır
+SESSION_TTL_DAKIKA = 30  # Bu süre içinde mesaj gelmezse session sıfırlanır
 
 
 def yeni_session() -> dict:
@@ -59,11 +59,11 @@ class EmlakHandler(BaseSektorHandler):
         if adim != 'hosgeldin':
             try:
                 son = datetime.fromisoformat(session.get('son_mesaj', ''))
-                if datetime.utcnow() - son > timedelta(hours=SESSION_TTL_SAAT):
+                if datetime.utcnow() - son > timedelta(minutes=SESSION_TTL_DAKIKA):
                     session.update(yeni_session())
                     wa.mesaj_gonder(phone_number_id, access_token, telefon,
-                                    f'⏰ Oturumunuz {SESSION_TTL_SAAT} saat işlem yapılmadığı için '
-                                    f'sona erdi. Yeniden başlıyoruz.\n\n'
+                                    f'⏰ {SESSION_TTL_DAKIKA} dakika işlem yapılmadığı için '
+                                    f'oturum sıfırlandı.\n\n'
                                     + self._hosgeldin_metni())
                     session['son_mesaj'] = datetime.utcnow().isoformat()
                     return False
