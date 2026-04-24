@@ -498,7 +498,7 @@ class EmlakHandler(BaseSektorHandler):
             if bilgi.get('komisyon_yuzde') is not None and session['komisyon_satis_yuzde'] is None:
                 session['komisyon_satis_yuzde'] = bilgi['komisyon_yuzde']
 
-        # Güncelleme özeti + kalan eksikler
+        # Güncelleme özeti + bir sonraki adım
         if guncellendi:
             eksik = self._eksik_alanlar(session)
             satir = '✅ ' + ' · '.join(guncellendi)
@@ -506,10 +506,10 @@ class EmlakHandler(BaseSektorHandler):
                 satir += '\n📝 Eksik: ' + ' · '.join(eksik)
             wa.mesaj_gonder(pid, tok, telefon, satir)
         else:
-            eksik = self._eksik_alanlar(session)
-            if eksik:
-                wa.mesaj_gonder(pid, tok, telefon,
-                                '🤔 Anlaşılamadı. Eksik: ' + ' · '.join(eksik))
+            # Anlamadık ama bunu söyleme — sıradaki adımı sor
+            rehber = self._sonraki_adim(session)
+            if rehber:
+                wa.mesaj_gonder(pid, tok, telefon, rehber)
 
     def _eksik_alanlar(self, session) -> list:
         eksik = []
@@ -522,6 +522,18 @@ class EmlakHandler(BaseSektorHandler):
         if not session.get('fiyat'):
             eksik.append('fiyat')
         return eksik
+
+    def _sonraki_adim(self, session: dict) -> str:
+        """Sıradaki eksik alan için tek cümlelik yönlendirme."""
+        if not session.get('alici', {}).get('ad_soyad'):
+            return '👤 Alıcının adını yazın veya kişi kartı gönderin.'
+        if not (session.get('tasinmaz', {}).get('adres') or session.get('konum')):
+            return '📍 Taşınmazın konumunu paylaşın veya adresini yazın.'
+        if not session.get('islem_turu'):
+            return '💬 _kiralık 15000_ veya _satılık 450000_ yazın.'
+        if not session.get('fiyat'):
+            return '💰 Fiyatı yazın. Örnek: _18000_'
+        return ''
 
     # ── LINK GÖNDER ───────────────────────────────────────────────────────────────
 
