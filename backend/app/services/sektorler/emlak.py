@@ -172,7 +172,7 @@ class EmlakHandler(BaseSektorHandler):
         _SELAMLAR = {'merhaba', 'selam', 'sa', 'hey', 'hi', 'hello', 'günaydın', 'iyi gunler', 'iyi akşamlar'}
         if msg_type in ('image', 'location', 'contacts') or (
                 msg_type == 'text' and len(metin) >= 3 and ml_h not in _SELAMLAR):
-            self._veri_isle(telefon, mesaj, msg_type, metin, session, pid, tok)
+            self._veri_isle(telefon, mesaj, msg_type, metin, session, pid, tok, supress_rehber=True)
             if self.session_tamam_mi(session):
                 session['adim'] = 'onay_bekleniyor'
                 wa.mesaj_gonder(pid, tok, telefon, self._onay_metni(session))
@@ -427,7 +427,7 @@ class EmlakHandler(BaseSektorHandler):
 
     # ── VERİ İŞLEME ──────────────────────────────────────────────────────────────
 
-    def _veri_isle(self, telefon, mesaj, msg_type, metin, session, pid, tok):
+    def _veri_isle(self, telefon, mesaj, msg_type, metin, session, pid, tok, supress_rehber=False):
         """Gelen mesajı tipine göre parse edip session'a ekle."""
         guncellendi = []
 
@@ -505,8 +505,7 @@ class EmlakHandler(BaseSektorHandler):
             if eksik:
                 satir += '\n📝 Eksik: ' + ' · '.join(eksik)
             wa.mesaj_gonder(pid, tok, telefon, satir)
-        else:
-            # Anlamadık ama bunu söyleme — sıradaki adımı sor
+        elif not supress_rehber:
             rehber = self._sonraki_adim(session)
             if rehber:
                 wa.mesaj_gonder(pid, tok, telefon, rehber)
@@ -747,8 +746,8 @@ class EmlakHandler(BaseSektorHandler):
             db.session.commit()
             frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
             form_url = f'{frontend_url}/hizli-form/{token_str}'
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f'[Emlak] Form token üretilemedi: {e}')
 
         metin = self._hosgeldin_metni(form_url)
         if prefix:
