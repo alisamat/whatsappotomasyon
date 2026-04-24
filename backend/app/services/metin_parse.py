@@ -159,21 +159,39 @@ def alici_detay_parse_et(metin: str) -> dict:
         return {'ad_soyad': metin.strip(), 'tc_no': None, 'telefon': None, 'adres': None}
 
 
-_YER_GOSTERME_PROMPT = """Türkçe mesajdan taşınmaz yer gösterme bilgilerini çıkar, şu JSON'u döndür:
+_YER_GOSTERME_PROMPT = """Türkçe mesajdan taşınmaz yer gösterme bilgilerini çıkar.
+
+KURALLAR:
+1. Mesajın başında telefon/TC/sayı içermeyen 2-4 Türkçe kelime varsa → alici_ad (ör: "ali okan 75000" → "Ali Okan")
+2. 4-9 haneli büyük sayı → fiyat olabilir (ör: 75000, 500000, 1500000)
+3. "bin" → ×1000, "milyon" → ×1000000 (ör: "15 bin" → 15000, "1.5 milyon" → 1500000)
+4. kira/kiralık/kiralama → islem_turu: "kira" | satış/satılık → islem_turu: "satis"
+5. "X ay" → komisyon_ay | "%X" → komisyon_yuzde
+6. Kesin olmayan adres/il/ilçe/mahalle için null yaz
+
+ÖRNEKLER:
+- "ali okan 75000" → {{"alici_ad": "Ali Okan", "fiyat": 75000}}
+- "kiralık 18000 komisyon 1 ay" → {{"islem_turu": "kira", "fiyat": 18000, "komisyon_ay": 1}}
+- "satılık 1500000 %2" → {{"islem_turu": "satis", "fiyat": 1500000, "komisyon_yuzde": 2}}
+- "Ahmet Kaya 0532... kadıköy kiralık 15000" → {{"alici_ad": "Ahmet Kaya", "alici_tel": "0532...", "ilce": "Kadıköy", "islem_turu": "kira", "fiyat": 15000}}
+- "15 bin" → {{"fiyat": 15000}}
+- "kira" → {{"islem_turu": "kira"}}
+
+JSON (kesin olmayan alanlar null):
 {{
-  "alici_ad": "kişinin adı soyadı veya null",
-  "alici_tc": "11 haneli TC kimlik no veya null",
-  "alici_tel": "telefon numarası veya null",
-  "adres": "taşınmaz adresi (sokak/mah/ilçe/şehir) veya null",
-  "sehir": "il adı veya null",
-  "ilce": "ilçe adı veya null",
-  "mahalle": "mahalle adı veya null",
-  "islem_turu": "kira" veya "satis" veya null,
-  "fiyat": fiyat rakamı (sadece sayı, TL/₺ işareti olmadan) veya null,
-  "komisyon_ay": kira komisyonu ay sayısı veya null,
-  "komisyon_yuzde": satış komisyonu yüzdesi veya null
+  "alici_ad": string|null,
+  "alici_tc": string|null,
+  "alici_tel": string|null,
+  "adres": string|null,
+  "sehir": string|null,
+  "ilce": string|null,
+  "mahalle": string|null,
+  "islem_turu": "kira"|"satis"|null,
+  "fiyat": number|null,
+  "komisyon_ay": number|null,
+  "komisyon_yuzde": number|null
 }}
-Kesin olmayan alanlar için null yaz, tahmin etme.
+
 Sadece JSON döndür.
 Metin: {metin}"""
 
@@ -217,26 +235,83 @@ def yer_gosterme_parse_et(metin: str) -> dict:
 def _yer_gosterme_regex(metin: str) -> dict:
     """Regex fallback — Gemini yoksa basit çıkarım."""
     sonuc = dict(_YER_GOSTERME_BOS)
+    ml = metin.lower()
+
     # Telefon
     tel_m = re.search(r'(\+?90|0)?[5][0-9]{9}', metin.replace(' ', ''))
     if tel_m:
         sonuc['alici_tel'] = tel_m.group()
+
     # TC (11 hane, 1 ile başlar)
     tc_m = re.search(r'\b[1-9][0-9]{10}\b', metin)
     if tc_m:
         sonuc['alici_tc'] = tc_m.group()
-    # Fiyat (rakam + opsiyonel TL/₺)
-    fiyat_m = re.search(r'(\d[\d.]*)\s*(?:tl|lira|₺)', metin.lower())
-    if fiyat_m:
+
+    # İsim tespiti: telefon ve TC yoksa baştaki Türkçe kelimeler isim
+    if not sonuc.get('alici_tel') and not sonuc.get('alici_tc'):
+        kelimeler = metin.strip().split()
+        isim_parts = []
+        for k in kelimeler:
+            temiz = re.sub(r'[^a-zA-ZğĞşŞçÇıİöÖüÜ]', '', k)
+            if temiz and len(temiz) >= 2:
+                isim_parts.append(k)
+            else:
+                break
+        if 2 <= len(isim_parts) <= 3:
+            sonuc['alici_ad'] = ' '.join(isim_parts).title()
+
+    # Fiyat — "X bin" veya "X milyon" formatı
+    bin_m = re.search(r'(\d+(?:[.,]\d+)?)\s*bin', ml)
+    milyon_m = re.search(r'(\d+(?:[.,]\d+)?)\s*milyon', ml)
+    if milyon_m:
         try:
-            sonuc['fiyat'] = float(fiyat_m.group(1).replace('.', '').replace(',', '.'))
+            sonuc['fiyat'] = float(milyon_m.group(1).replace(',', '.')) * 1_000_000
         except Exception:
             pass
+    elif bin_m:
+        try:
+            sonuc['fiyat'] = float(bin_m.group(1).replace(',', '.')) * 1_000
+        except Exception:
+            pass
+
+    # Fiyat — sayı + TL/₺ etiketi
+    if not sonuc.get('fiyat'):
+        fiyat_m = re.search(r'(\d[\d.]*)\s*(?:tl|lira|₺)', ml)
+        if fiyat_m:
+            try:
+                sonuc['fiyat'] = float(fiyat_m.group(1).replace('.', '').replace(',', '.'))
+            except Exception:
+                pass
+
+    # Fiyat — etiketsiz 4-7 haneli sayı (TC değil)
+    if not sonuc.get('fiyat'):
+        for m in re.finditer(r'\b(\d{4,7})\b', metin):
+            num_str = m.group(1)
+            if sonuc.get('alici_tc') and num_str == sonuc['alici_tc']:
+                continue
+            try:
+                sonuc['fiyat'] = float(num_str)
+                break
+            except Exception:
+                pass
+
     # İşlem türü
-    if re.search(r'kira|kiralık|kiralama', metin.lower()):
+    if re.search(r'kira|kiralık|kiralama', ml):
         sonuc['islem_turu'] = 'kira'
-    elif re.search(r'satış|satılık|satilik|sat[ıi]ş', metin.lower()):
+    elif re.search(r'satış|satılık|satilik|sat[ıi]ş', ml):
         sonuc['islem_turu'] = 'satis'
+
+    # Komisyon
+    kom_ay_m = re.search(r'(\d+)\s*ay', ml)
+    if kom_ay_m:
+        sonuc['komisyon_ay'] = int(kom_ay_m.group(1))
+    kom_yuzde_m = re.search(r'%\s*(\d+(?:[.,]\d+)?)', metin)
+    if kom_yuzde_m:
+        try:
+            sonuc['komisyon_yuzde'] = float(kom_yuzde_m.group(1).replace(',', '.'))
+        except Exception:
+            pass
+
     return sonuc
 
 

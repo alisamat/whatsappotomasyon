@@ -2,6 +2,8 @@
 EMLAK SEKTÖRÜ — Yer Gösterme Sözleşmesi
 Sadeleştirilmiş 3-adım akış: hosgeldin → veri_toplama → onay_bekleniyor
 """
+import re
+import difflib
 import logging
 from datetime import date, datetime, timedelta
 from app.services.sektorler.base import BaseSektorHandler
@@ -10,6 +12,34 @@ from app.services import whatsapp_client as wa
 logger = logging.getLogger(__name__)
 
 SESSION_TTL_DAKIKA = 30  # Bu süre içinde mesaj gelmezse session sıfırlanır
+
+
+def _eslesir(ml: str, komutlar) -> bool:
+    """
+    Yazım hatası toleranslı komut eşleştirme.
+    - Exact match
+    - Tekrar harf normalleştirme: "kapatt" → "kapat", "evett" → "evet"
+    - Fuzzy match (tek kelime, ≥4 karakter): "kapt" → "kapat", "kaat" → "kapat"
+    """
+    if not ml:
+        return False
+    komut_listesi = list(komutlar)
+    if ml in komutlar:
+        return True
+    if len(ml) <= 2:          # Çok kısa: sadece exact match
+        return False
+    # Tekrarlanan harfleri temizle: "kapatt" → "kapat"
+    norm = re.sub(r'(.)\1+', r'\1', ml)
+    if norm in komutlar:
+        return True
+    # Tek kelimeli, makul uzunlukta → fuzzy
+    if ' ' not in ml and 3 <= len(ml) <= 15:
+        esik = 0.72 if len(ml) <= 5 else 0.78   # Kısa kelimeler için daha toleranslı
+        if difflib.get_close_matches(ml, komut_listesi, n=1, cutoff=esik):
+            return True
+        if norm != ml and difflib.get_close_matches(norm, komut_listesi, n=1, cutoff=esik):
+            return True
+    return False
 
 
 def yeni_session() -> dict:
@@ -53,6 +83,8 @@ class EmlakHandler(BaseSektorHandler):
         adim     = session.get('adim', 'hosgeldin')
         msg_type = mesaj.get('type', '')
         metin    = mesaj.get('text', {}).get('body', '').strip() if msg_type == 'text' else ''
+        # Komut eşleştirme için sondaki noktalama işaretlerini temizle ("evet!" → "evet")
+        metin    = re.sub(r'[.!?,;:]+$', '', metin).strip()
         ml       = metin.lower()
 
         # TTL kontrolü — son mesajdan bu yana 24 saat geçtiyse sıfırla
@@ -73,16 +105,28 @@ class EmlakHandler(BaseSektorHandler):
         # Her mesajda son_mesaj güncelle
         session['son_mesaj'] = datetime.utcnow().isoformat()
 
+        # Desteklenmeyen mesaj türleri
+        if msg_type and msg_type not in ('text', 'image', 'location', 'contacts'):
+            if msg_type in ('sticker', 'video', 'audio', 'voice', 'document', 'reaction'):
+                wa.mesaj_gonder(phone_number_id, access_token, telefon,
+                                '⚠️ Desteklenmez. Metin, konum, kişi kartı veya fotoğraf gönderin.')
+            return False
+
         # Global komutlar
-        if ml in ('iptal', 'sıfırla', 'reset', 'yeni', '0'):
+        _RESET = ('iptal', 'sıfırla', 'sifirla', 'reset', 'yeni', 'kapat', 'dur', 'q', 'çık', 'cik', '0')
+        if _eslesir(ml, _RESET):
             session.update(yeni_session())
             wa.mesaj_gonder(phone_number_id, access_token, telefon,
                             '🔄 Sıfırlandı.\n\n' + self._hosgeldin_metni())
             return False
 
-        if ml in ('durum', 'bakiye', 'kredi'):
+        if _eslesir(ml, ('durum', 'bakiye', 'kredi')):
             wa.mesaj_gonder(phone_number_id, access_token, telefon,
-                            f'💳 Kredi bakiyeniz: {user.kredi:.0f}')
+                            f'💳 Bakiye: {user.kredi:.0f} kredi')
+            return False
+
+        if _eslesir(ml, ('yardım', 'yardim', 'help', '?', 'nasıl', 'nasil')):
+            wa.mesaj_gonder(phone_number_id, access_token, telefon, self._hosgeldin_metni())
             return False
 
         if adim == 'hosgeldin':
@@ -95,7 +139,7 @@ class EmlakHandler(BaseSektorHandler):
                 phone_number_id, access_token, user)
         elif adim == 'onay_bekleniyor':
             return self._isle_onay(
-                telefon, metin, session, phone_number_id, access_token, user)
+                telefon, mesaj, msg_type, metin, session, phone_number_id, access_token, user)
         else:
             session['adim'] = 'hosgeldin'
             wa.mesaj_gonder(phone_number_id, access_token, telefon, self._hosgeldin_metni())
@@ -104,11 +148,30 @@ class EmlakHandler(BaseSektorHandler):
     # ── ADIM: hosgeldin ───────────────────────────────────────────────────────────
 
     def _isle_hosgeldin(self, telefon, mesaj, msg_type, metin, session, pid, tok, user):
+        ml_h = re.sub(r'[.!?,;:]+$', '', metin).lower().strip()
+
+        # Link isteği hosgeldin'de de çalışsın
+        if ml_h in ('link', 'form', 'web', 'url', 'bağlantı', 'baglanty'):
+            session['adim'] = 'veri_toplama'
+            self._link_gonder(telefon, session, pid, tok, user)
+            return False
+
+        # Şablon seçimi hosgeldin'de de çalışsın
+        _sablon_h = {'1': 1, 'klasik': 1, '2': 2, 'modern': 2, '3': 3, 'minimalist': 3}
+        if ml_h in _sablon_h:
+            session['sablon_no'] = _sablon_h[ml_h]
+            _isimler_h = {1: 'Klasik', 2: 'Modern', 3: 'Minimalist'}
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'🖨 Şablon: *{_isimler_h[_sablon_h[ml_h]]}* seçildi.')
+            session['adim'] = 'veri_toplama'
+            return False
+
         wa.mesaj_gonder(pid, tok, telefon, self._hosgeldin_metni())
         session['adim'] = 'veri_toplama'
 
-        # Eğer ilk mesajda veri varsa hemen işle
-        if msg_type in ('image', 'location', 'contacts') or (msg_type == 'text' and len(metin) > 8):
+        _SELAMLAR = {'merhaba', 'selam', 'sa', 'hey', 'hi', 'hello', 'günaydın', 'iyi gunler', 'iyi akşamlar'}
+        if msg_type in ('image', 'location', 'contacts') or (
+                msg_type == 'text' and len(metin) >= 3 and ml_h not in _SELAMLAR):
             self._veri_isle(telefon, mesaj, msg_type, metin, session, pid, tok)
             if self.session_tamam_mi(session):
                 session['adim'] = 'onay_bekleniyor'
@@ -118,24 +181,61 @@ class EmlakHandler(BaseSektorHandler):
     # ── ADIM: veri_toplama ────────────────────────────────────────────────────────
 
     def _isle_veri_toplama(self, telefon, mesaj, msg_type, metin, session, pid, tok, user):
-        ml = metin.lower()
+        ml = re.sub(r'[.!?,;:]+$', '', metin).lower().strip()
 
-        # Link isteği (yöntem 2)
-        if ml in ('2', 'link', 'form', 'bağlantı', 'baglanty', 'web'):
+        # Link isteği
+        if _eslesir(ml, ('link', 'form', 'web', 'url', 'bağlantı', 'bagla')):
             self._link_gonder(telefon, session, pid, tok, user)
             return False
 
         # Şablon değiştirme
-        sablon_map = {
-            '1': 1, 'klasik': 1, 'şablon 1': 1, 'sablon 1': 1,
-            '2': 2, 'modern': 2, 'şablon 2': 2, 'sablon 2': 2,
-            '3': 3, 'minimalist': 3, 'şablon 3': 3, 'sablon 3': 3,
-        }
-        if ml in sablon_map:
-            session['sablon_no'] = sablon_map[ml]
+        _SABLON_STR = {'klasik': 1, 'modern': 2, 'minimalist': 3}
+        if _eslesir(ml, ('şablon', 'sablon', 'template')):
+            wa.mesaj_gonder(pid, tok, telefon,
+                            '🖨 Şablon seçin:\n*1* klasik · *2* modern · *3* minimalist')
+            return False
+        _sablon_no = {'1': 1, '2': 2, '3': 3}.get(ml)
+        if _sablon_no is None:
+            _fuz = difflib.get_close_matches(ml, list(_SABLON_STR.keys()), n=1, cutoff=0.72)
+            if _fuz:
+                _sablon_no = _SABLON_STR[_fuz[0]]
+        if _sablon_no is not None:
+            session['sablon_no'] = _sablon_no
             isimler = {1: 'Klasik', 2: 'Modern', 3: 'Minimalist'}
             wa.mesaj_gonder(pid, tok, telefon,
-                            f'🖨 Şablon: *{isimler[sablon_map[ml]]}* seçildi.')
+                            f'🖨 Şablon: *{isimler[_sablon_no]}* seçildi.')
+            return False
+
+        # Özet (kısmi)
+        if _eslesir(ml, ('özet', 'ozet', 'ne var', 'neredeyim')):
+            wa.mesaj_gonder(pid, tok, telefon, self._kismi_ozet_metni(session))
+            return False
+
+        # Ada / parsel / m2 — "ada 15", "parsel 3", "m2 120" / "alan 120"
+        _ada_m = re.match(r'^ada\s+(\S+)$', ml)
+        if _ada_m:
+            session['tasinmaz']['ada'] = _ada_m.group(1)
+            wa.mesaj_gonder(pid, tok, telefon, f'✅ Ada: {_ada_m.group(1)}')
+            return False
+        _parsel_m = re.match(r'^parsel\s+(\S+)$', ml)
+        if _parsel_m:
+            session['tasinmaz']['parsel'] = _parsel_m.group(1)
+            wa.mesaj_gonder(pid, tok, telefon, f'✅ Parsel: {_parsel_m.group(1)}')
+            return False
+        _alan_m = re.match(r'^(?:m2|alan|metrekare)\s+(\d+(?:[.,]\d+)?)$', ml)
+        if _alan_m:
+            try:
+                session['tasinmaz']['alan_m2'] = float(_alan_m.group(1).replace(',', '.'))
+                wa.mesaj_gonder(pid, tok, telefon, f'✅ Alan: {_alan_m.group(1)} m²')
+            except Exception:
+                pass
+            return False
+
+        # Fotoğraf silme
+        if ml in ('foto sil', 'fotoğraf sil', 'fotografları sil', 'foto temizle') or \
+                _eslesir(ml, ('fotosuz', 'foto yok')):
+            session['fotograflar'] = []
+            wa.mesaj_gonder(pid, tok, telefon, '🗑 Fotoğraflar silindi.')
             return False
 
         # Veriyi işle
@@ -150,34 +250,179 @@ class EmlakHandler(BaseSektorHandler):
 
     # ── ADIM: onay_bekleniyor ─────────────────────────────────────────────────────
 
-    def _isle_onay(self, telefon, metin, session, pid, tok, user):
-        ml = metin.lower().strip()
-        if ml in ('evet', 'onayla', 'onay', 'ok', 'tamam', 'e', 'y', 'yes'):
+    def _isle_onay(self, telefon, mesaj, msg_type, metin, session, pid, tok, user):
+        ml = re.sub(r'[.!?,;:]+$', '', metin).lower().strip()
+
+        # Link isteği onay'da da çalışır
+        if _eslesir(ml, ('link', 'form', 'web', 'url', 'bağlantı')):
+            self._link_gonder(telefon, session, pid, tok, user)
+            return False
+
+        # Fotoğraf onay ekranında da kabul edilir
+        if msg_type == 'image':
+            media_id = mesaj.get('image', {}).get('id')
+            if media_id and len(session['fotograflar']) < self.MAX_FOTOGRAF:
+                foto_bytes = wa.medya_indir(media_id, tok)
+                if foto_bytes:
+                    session['fotograflar'].append(foto_bytes)
+            sayi = len(session['fotograflar'])
+            kalan = self.MAX_FOTOGRAF - sayi
+            bilgi = (f'📸 {sayi}/{self.MAX_FOTOGRAF} fotoğraf' +
+                     (f' · {kalan} daha ekleyebilirsiniz.' if kalan > 0 else ' · Maksimum.'))
+            wa.mesaj_gonder(pid, tok, telefon, bilgi + '\n\n' + self._onay_metni(session))
+            return False
+
+        # Yeni kişi kartı → alıcıyı güncelle, özette kal
+        if msg_type == 'contacts':
+            kisi = mesaj.get('contacts', [{}])[0]
+            isim = kisi.get('name', {}).get('formatted_name', '')
+            tels = kisi.get('phones', [{}])
+            tel  = tels[0].get('phone', '') if tels else ''
+            if isim:
+                session['alici']['ad_soyad'] = isim
+                if tel:
+                    session['alici']['telefon'] = tel
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'👤 {isim} güncellendi.\n\n' + self._onay_metni(session))
+            return False
+
+        # Yeni konum → adresi güncelle, özette kal
+        if msg_type == 'location':
+            from app.services.whatsapp_client import konum_mesaji_isle
+            loc = mesaj.get('location', {})
+            session['konum'] = konum_mesaji_isle(loc)
+            session['tasinmaz']['adres'] = (loc.get('address', '')
+                                            or session['konum'].get('adres', ''))
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'📍 Konum güncellendi.\n\n' + self._onay_metni(session))
+            return False
+
+        # Onay
+        _EVET = ('evet', 'onayla', 'onay', 'ok', 'tamam', 'e', 'y', 'yes', '✓', '✅',
+                 'gönder', 'gonder', 'oluştur', 'olustur', 'hazır', 'hazir',
+                 'bitti', 'yazdır', 'yazdir', 'onayladım', 'onayladim',
+                 'onaylıyorum', 'onayliyorum', 'yap', 'üret', 'uret')
+        if _eslesir(ml, _EVET):
             return self._belge_uret(telefon, session, pid, tok, user)
-        elif ml in ('alici', 'alıcı', 'isim', 'ad', 'müşteri'):
+
+        # Hayır → ne düzelteceğini sor
+        if _eslesir(ml, ('hayır', 'hayir', 'h', 'n', 'no', 'değil', 'degil')):
+            wa.mesaj_gonder(pid, tok, telefon,
+                            '✏️ Ne düzeltelim?\n\n'
+                            '*ad* · *adres* · *fiyat* · *tür*\n'
+                            '*tc* · *tel* · *komisyon* · *şablon*')
+            return False
+
+        # Alan düzeltme komutları
+        if _eslesir(ml, ('alici', 'alıcı', 'isim', 'ad', 'müşteri', 'musteri', 'name')):
             session['alici']['ad_soyad'] = None
             session['adim'] = 'veri_toplama'
             wa.mesaj_gonder(pid, tok, telefon,
-                            '👤 Alıcı adını tekrar girin\n'
-                            '_(rehberden kişi kartı veya yazarak)_')
-        elif ml in ('adres', 'tasinmaz', 'taşınmaz', 'konum', 'yer'):
+                            '👤 Alıcı adını girin _(kişi kartı veya metin)_')
+            return False
+
+        if _eslesir(ml, ('adres', 'tasinmaz', 'taşınmaz', 'konum', 'yer', 'lokasyon')):
             session['tasinmaz']['adres'] = None
             session['konum'] = None
             session['adim'] = 'veri_toplama'
             wa.mesaj_gonder(pid, tok, telefon,
-                            '📍 Adresi veya konumu tekrar gönderin:')
-        elif ml in ('fiyat', 'bedel', 'ücret', 'ucret'):
+                            '📍 Adresi veya konumu gönderin:')
+            return False
+
+        if _eslesir(ml, ('fiyat', 'bedel', 'ücret', 'ucret', 'para', 'tutar')):
             session['fiyat'] = None
             session['adim'] = 'veri_toplama'
             wa.mesaj_gonder(pid, tok, telefon,
-                            '💰 Fiyatı (TL olarak) tekrar girin:')
-        elif ml in ('tur', 'tür', 'islem', 'işlem', 'kira', 'kiralık', 'satış', 'satilık'):
+                            '💰 Fiyatı TL olarak girin:')
+            return False
+
+        if _eslesir(ml, ('tur', 'tür', 'islem', 'işlem', 'tip')):
             session['islem_turu'] = None
             session['adim'] = 'veri_toplama'
             wa.mesaj_gonder(pid, tok, telefon,
-                            '🔑 İşlem türünü yazın: *kiralık* veya *satılık*')
-        else:
-            wa.mesaj_gonder(pid, tok, telefon, self._onay_metni(session))
+                            '🔑 İşlem türü: *kiralık* veya *satılık*')
+            return False
+
+        # İşlem türünü direkt değiştir
+        if _eslesir(ml, ('kiralık', 'kiralik', 'kira', 'kiralama')):
+            session['islem_turu'] = 'kira'
+            session['komisyon_satis_yuzde'] = None
+            wa.mesaj_gonder(pid, tok, telefon, '🔑 Kiralama seçildi.\n\n' + self._onay_metni(session))
+            return False
+
+        if _eslesir(ml, ('satılık', 'satilik', 'satış', 'satis', 'sat')):
+            session['islem_turu'] = 'satis'
+            session['komisyon_kira_ay'] = None
+            wa.mesaj_gonder(pid, tok, telefon, '🔑 Satış seçildi.\n\n' + self._onay_metni(session))
+            return False
+
+        if ml in ('tc', 'kimlik', 'tc no', 'tcno', 'tckn') or \
+                _eslesir(ml, ('kimlik', 'tcno', 'tckn')):
+            session['alici']['tc_no'] = None
+            session['adim'] = 'veri_toplama'
+            wa.mesaj_gonder(pid, tok, telefon,
+                            '🪪 TC kimlik numarasını girin (11 hane):')
+            return False
+
+        if _eslesir(ml, ('telefon', 'tel', 'gsm', 'cep', 'numara')):
+            session['alici']['telefon'] = None
+            session['adim'] = 'veri_toplama'
+            wa.mesaj_gonder(pid, tok, telefon,
+                            '📞 Telefon numarasını girin:')
+            return False
+
+        if _eslesir(ml, ('komisyon', 'kom')):
+            session['komisyon_kira_ay'] = None
+            session['komisyon_satis_yuzde'] = None
+            session['adim'] = 'veri_toplama'
+            if session.get('islem_turu') == 'kira':
+                wa.mesaj_gonder(pid, tok, telefon, '📊 Kira komisyonu (ay sayısı):')
+            else:
+                wa.mesaj_gonder(pid, tok, telefon, '📊 Satış komisyonu (%):')
+            return False
+
+        # Fotoğraf silme onay ekranında da çalışır
+        if ml in ('foto sil', 'fotoğraf sil', 'fotografları sil', 'foto temizle') or \
+                _eslesir(ml, ('fotosuz', 'foto yok')):
+            session['fotograflar'] = []
+            wa.mesaj_gonder(pid, tok, telefon, '🗑 Fotoğraflar silindi.\n\n' + self._onay_metni(session))
+            return False
+
+        # Şablon değiştirme
+        if _eslesir(ml, ('şablon', 'sablon', 'template')):
+            wa.mesaj_gonder(pid, tok, telefon,
+                            '🖨 Şablon seçin:\n*1* klasik · *2* modern · *3* minimalist')
+            return False
+        _SABLON_STR2 = {'klasik': 1, 'modern': 2, 'minimalist': 3}
+        _sablon_no2 = {'1': 1, '2': 2, '3': 3}.get(ml)
+        if _sablon_no2 is None:
+            _fuz2 = difflib.get_close_matches(ml, list(_SABLON_STR2.keys()), n=1, cutoff=0.72)
+            if _fuz2:
+                _sablon_no2 = _SABLON_STR2[_fuz2[0]]
+        if _sablon_no2 is not None:
+            session['sablon_no'] = _sablon_no2
+            _isimler = {1: 'Klasik', 2: 'Modern', 3: 'Minimalist'}
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'🖨 Şablon: *{_isimler[_sablon_no2]}*\n\n' + self._onay_metni(session))
+            return False
+
+        # Sayı yazılırsa fiyat güncellemesi
+        if msg_type == 'text' and metin:
+            sayi_m = re.fullmatch(r'[\d.,]+', metin.strip())
+            if sayi_m:
+                try:
+                    yeni_fiyat = str(int(float(
+                        metin.strip().replace('.', '').replace(',', '.')
+                    )))
+                    session['fiyat'] = yeni_fiyat
+                    wa.mesaj_gonder(pid, tok, telefon,
+                                    f'💰 Fiyat güncellendi: {yeni_fiyat} TL\n\n' + self._onay_metni(session))
+                    return False
+                except Exception:
+                    pass
+
+        # Bilinmeyen metin → özeti tekrar göster
+        wa.mesaj_gonder(pid, tok, telefon, self._onay_metni(session))
         return False
 
     # ── VERİ İŞLEME ──────────────────────────────────────────────────────────────
@@ -248,9 +493,9 @@ class EmlakHandler(BaseSektorHandler):
                     session['fiyat'] = str(bilgi['fiyat'])
                 guncellendi.append(f'💰 {session["fiyat"]} TL')
 
-            if bilgi.get('komisyon_ay') and not session['komisyon_kira_ay']:
+            if bilgi.get('komisyon_ay') is not None and session['komisyon_kira_ay'] is None:
                 session['komisyon_kira_ay'] = bilgi['komisyon_ay']
-            if bilgi.get('komisyon_yuzde') and not session['komisyon_satis_yuzde']:
+            if bilgi.get('komisyon_yuzde') is not None and session['komisyon_satis_yuzde'] is None:
                 session['komisyon_satis_yuzde'] = bilgi['komisyon_yuzde']
 
         # Güncelleme özeti + kalan eksikler
@@ -258,25 +503,24 @@ class EmlakHandler(BaseSektorHandler):
             eksik = self._eksik_alanlar(session)
             satir = '✅ ' + ' · '.join(guncellendi)
             if eksik:
-                satir += '\n\n📝 Eksik: ' + ' · '.join(eksik)
+                satir += '\n📝 Eksik: ' + ' · '.join(eksik)
             wa.mesaj_gonder(pid, tok, telefon, satir)
         else:
-            # Hiçbir şey anlaşılmadıysa ne eksik olduğunu hatırlat
             eksik = self._eksik_alanlar(session)
             if eksik:
                 wa.mesaj_gonder(pid, tok, telefon,
-                                '🤔 Anlaşılamadı.\n\n📝 Eksik: ' + ' · '.join(eksik))
+                                '🤔 Anlaşılamadı. Eksik: ' + ' · '.join(eksik))
 
     def _eksik_alanlar(self, session) -> list:
         eksik = []
         if not session.get('alici', {}).get('ad_soyad'):
-            eksik.append('alıcı adı')
+            eksik.append('ad')
         if not (session.get('tasinmaz', {}).get('adres') or session.get('konum')):
-            eksik.append('adres/konum')
+            eksik.append('adres')
         if not session.get('islem_turu'):
-            eksik.append('kiralık/satılık')
+            eksik.append('kira/satış')
         if not session.get('fiyat'):
-            eksik.append('fiyat (TL)')
+            eksik.append('fiyat')
         return eksik
 
     # ── LINK GÖNDER ───────────────────────────────────────────────────────────────
@@ -314,12 +558,7 @@ class EmlakHandler(BaseSektorHandler):
         from app.services import kayit_akisi as kayit
         from flask import current_app
 
-        if not kayit.kredi_dus(user, self.KREDI_MALIYETI):
-            wa.mesaj_gonder(pid, tok, telefon,
-                            f'❌ Yetersiz kredi. Belge için {self.KREDI_MALIYETI} kredi gerekli.\n'
-                            f'💳 Bakiye: {user.kredi:.0f} kredi')
-            return False
-
+        # Önce profil kontrolü — kredi düşmeden önce yapılmalı
         profil = EmlakciProfil.query.filter_by(user_id=user.id).first()
         if not profil:
             frontend_url = current_app.config.get('FRONTEND_URL', '')
@@ -327,6 +566,19 @@ class EmlakHandler(BaseSektorHandler):
                             f'⚠️ Önce emlakçı profilinizi tamamlayın:\n'
                             f'🔗 {frontend_url}/emlak-profil')
             return False
+
+        if not kayit.kredi_dus(user, self.KREDI_MALIYETI):
+            frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'❌ Yetersiz kredi ({user.kredi:.0f}/{self.KREDI_MALIYETI})\n\n'
+                            f'💳 Kredi satın almak için:\n{frontend_url}/kredi')
+            return False
+
+        # Komisyon belirtilmemişse profil varsayılanını kullan (0 geçerli değer, None değil)
+        if session.get('islem_turu') == 'kira' and session.get('komisyon_kira_ay') is None:
+            session['komisyon_kira_ay'] = profil.komisyon_kira_ay if profil.komisyon_kira_ay is not None else 1
+        if session.get('islem_turu') == 'satis' and session.get('komisyon_satis_yuzde') is None:
+            session['komisyon_satis_yuzde'] = profil.komisyon_satis_yuzde if profil.komisyon_satis_yuzde is not None else 2.0
 
         try:
             pdf_bytes = pdf_olustur(session, profil)
@@ -410,27 +662,56 @@ class EmlakHandler(BaseSektorHandler):
                     wa.belge_gonder(pid, tok, telefon, pdf_url, dosya_adi, baslik_mesaj)
 
         logger.info(f'[Emlak] Belge gönderildi ({belge_fmt}) → {telefon}')
+
+        # Kredi bitmek üzereyse uyar
+        if user.kredi < self.KREDI_MALIYETI:
+            frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
+            wa.mesaj_gonder(pid, tok, telefon,
+                            f'⚠️ Krediniz bitti ({user.kredi:.0f} kaldı).\n{frontend_url}/kredi')
+
         return True
 
     # ── MESAJ METİNLERİ ─────────────────────────────────────────────────────────
 
+    def _kismi_ozet_metni(self, session: dict) -> str:
+        """Veri_toplama aşamasında kısmi durum özeti."""
+        alici    = session.get('alici', {})
+        tasinmaz = session.get('tasinmaz', {})
+        konum    = session.get('konum') or {}
+        satirlar = ['📊 *Mevcut durum*\n']
+
+        ad = alici.get('ad_soyad')
+        satirlar.append(f'👤 Ad: {ad or "—"}')
+        adres = tasinmaz.get('adres') or konum.get('adres')
+        satirlar.append(f'📍 Adres: {adres[:50] + "..." if adres and len(adres) > 50 else adres or "—"}')
+        islem = session.get('islem_turu')
+        satirlar.append(f'🔑 Tür: {"Kiralama" if islem == "kira" else "Satış" if islem == "satis" else "—"}')
+        satirlar.append(f'💰 Fiyat: {session.get("fiyat") + " TL" if session.get("fiyat") else "—"}')
+        foto = len(session.get('fotograflar', []))
+        if foto:
+            satirlar.append(f'📸 Fotoğraf: {foto}/{self.MAX_FOTOGRAF}')
+
+        eksik = self._eksik_alanlar(session)
+        if eksik:
+            satirlar.append(f'\n📝 Eksik: ' + ' · '.join(eksik))
+        else:
+            satirlar.append('\n✅ Tüm zorunlu alanlar dolu!')
+        return '\n'.join(satirlar)
+
     def _hosgeldin_metni(self) -> str:
         return (
             '🏠 *Yer Gösterme Sözleşmesi*\n\n'
-            'Belgeyi 3 şekilde oluşturabilirsiniz:\n\n'
-            '📱 *1 — WhatsApp ile (sıra önemli değil)*\n'
-            '· 👤 Rehberden *kişi kartı* gönderin\n'
-            '· 📍 *Konum* paylaşın veya adres yazın\n'
-            '· 💬 İşlem ve fiyat: _"kiralık 15000"_\n'
-            '· 📸 Fotoğraf isteğe bağlı (max 4)\n\n'
-            '🔗 *2 — Web formu*\n'
-            '"link" yazın → formu doldurun → PDF gelir\n\n'
-            '✍️ *3 — Tek mesajda serbest yaz*\n'
-            '_"Ali Veli 05321112222 Kadıköy Moda Cad 5_\n'
-            '_kiralık 18.000 TL komisyon 1 ay"_\n\n'
+            '📱 *WhatsApp ile* (sıra önemli değil)\n'
+            '· 👤 Kişi kartı gönderin\n'
+            '· 📍 Konum paylaşın veya adres yazın\n'
+            '· 💬 _kiralık 15000_ · _satılık 500000_\n'
+            '· 📸 Fotoğraf (isteğe bağlı, max 4)\n\n'
+            '🔗 *Web formu:* _link_ yazın\n\n'
+            '✍️ *Tek mesajda:*\n'
+            '_Ali Veli 05321112222 Kadıköy kiralık 18000 komisyon 1 ay_\n\n'
             '─────────────────\n'
-            '_Şablon:_ 1 klasik · 2 modern · 3 minimalist\n'
-            '_Sıfırlamak için:_ sıfırla'
+            'Şablon: 1 klasik · 2 modern · 3 minimalist\n'
+            'Sıfırla: _kapat_'
         )
 
     def _onay_metni(self, session: dict) -> str:
@@ -447,23 +728,22 @@ class EmlakHandler(BaseSektorHandler):
         komisyon = '—'
         if session.get('islem_turu') == 'kira':
             k = session.get('komisyon_kira_ay')
-            komisyon = f'{k} aylık kira' if k else '—'
+            komisyon = f'{k} aylık kira' if k is not None else '(profil varsayılanı)'
         elif session.get('islem_turu') == 'satis':
             k = session.get('komisyon_satis_yuzde')
-            komisyon = f'%{k}' if k else '—'
+            komisyon = f'%{k}' if k is not None else '(profil varsayılanı)'
 
         return (
             '📋 *Özet — Onaylıyor musunuz?*\n\n'
-            f'🖨 Şablon : {sablon_adlari.get(session.get("sablon_no", 1))}\n'
-            f'📸 Fotoğraf: {"Var (" + str(foto) + " adet)" if foto > 0 else "Yok"}\n'
-            f'🔑 İşlem   : {islem_tr}\n'
-            f'👤 Alıcı   : {alici_ad}\n'
-            f'🪪 TC      : {tc}\n'
-            f'📞 Tel     : {tel}\n'
-            f'📍 Adres   : {adres[:80]}{"..." if len(adres) > 80 else ""}\n'
-            f'💰 Bedel   : {session.get("fiyat", "—")} TL\n'
-            f'📊 Komisyon: {komisyon}\n\n'
+            f'🖨 {sablon_adlari.get(session.get("sablon_no", 1))}'
+            f'{"  📸 " + str(foto) + " fotoğraf" if foto > 0 else ""}\n'
+            f'🔑 {islem_tr}  💰 {session.get("fiyat", "—")} TL'
+            f'{"  📊 " + komisyon if komisyon != "—" else ""}\n'
+            f'👤 {alici_ad}'
+            f'{"  🪪 " + tc if tc != "—" else ""}'
+            f'{"  📞 " + tel if tel != "—" else ""}\n'
+            f'📍 {adres[:70]}{"..." if len(adres) > 70 else ""}\n\n'
             '✅ *evet* → Belgeyi oluştur\n'
-            '✏️ Düzelt → *alıcı* · *adres* · *fiyat* · *tür*\n'
-            '❌ *sıfırla* → Baştan başla'
+            '✏️ Düzelt: *ad* · *adres* · *fiyat* · *tür* · *tc* · *tel* · *komisyon* · *şablon*\n'
+            '❌ *kapat* → Baştan başla'
         )
