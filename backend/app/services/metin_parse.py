@@ -159,6 +159,87 @@ def alici_detay_parse_et(metin: str) -> dict:
         return {'ad_soyad': metin.strip(), 'tc_no': None, 'telefon': None, 'adres': None}
 
 
+_YER_GOSTERME_PROMPT = """Türkçe mesajdan taşınmaz yer gösterme bilgilerini çıkar, şu JSON'u döndür:
+{{
+  "alici_ad": "kişinin adı soyadı veya null",
+  "alici_tc": "11 haneli TC kimlik no veya null",
+  "alici_tel": "telefon numarası veya null",
+  "adres": "taşınmaz adresi (sokak/mah/ilçe/şehir) veya null",
+  "sehir": "il adı veya null",
+  "ilce": "ilçe adı veya null",
+  "mahalle": "mahalle adı veya null",
+  "islem_turu": "kira" veya "satis" veya null,
+  "fiyat": fiyat rakamı (sadece sayı, TL/₺ işareti olmadan) veya null,
+  "komisyon_ay": kira komisyonu ay sayısı veya null,
+  "komisyon_yuzde": satış komisyonu yüzdesi veya null
+}}
+Kesin olmayan alanlar için null yaz, tahmin etme.
+Sadece JSON döndür.
+Metin: {metin}"""
+
+_YER_GOSTERME_BOS = {
+    'alici_ad': None, 'alici_tc': None, 'alici_tel': None,
+    'adres': None, 'sehir': None, 'ilce': None, 'mahalle': None,
+    'islem_turu': None, 'fiyat': None, 'komisyon_ay': None, 'komisyon_yuzde': None,
+}
+
+
+def yer_gosterme_parse_et(metin: str) -> dict:
+    """Serbest metinden tüm yer gösterme alanlarını AI ile çıkar."""
+    api_key = os.environ.get('GEMINI_API_KEY', '')
+    if not api_key:
+        return _yer_gosterme_regex(metin)
+    try:
+        payload = {
+            'contents': [{'parts': [{'text': _YER_GOSTERME_PROMPT.format(metin=metin)}]}],
+            'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 512},
+        }
+        resp = requests.post(_API_URL.format(key=api_key), json=payload, timeout=15)
+        resp.raise_for_status()
+        text = (
+            resp.json()
+            .get('candidates', [{}])[0]
+            .get('content', {})
+            .get('parts', [{}])[0]
+            .get('text', '')
+            .strip()
+        )
+        if text.startswith('```'):
+            text = re.sub(r'^```(?:json)?\s*', '', text)
+            text = re.sub(r'\s*```$', '', text)
+        result = json.loads(text)
+        return {**_YER_GOSTERME_BOS, **result}
+    except Exception as e:
+        logger.warning(f'[MetinParse] yer_gosterme Gemini hatası: {e}')
+        return _yer_gosterme_regex(metin)
+
+
+def _yer_gosterme_regex(metin: str) -> dict:
+    """Regex fallback — Gemini yoksa basit çıkarım."""
+    sonuc = dict(_YER_GOSTERME_BOS)
+    # Telefon
+    tel_m = re.search(r'(\+?90|0)?[5][0-9]{9}', metin.replace(' ', ''))
+    if tel_m:
+        sonuc['alici_tel'] = tel_m.group()
+    # TC (11 hane, 1 ile başlar)
+    tc_m = re.search(r'\b[1-9][0-9]{10}\b', metin)
+    if tc_m:
+        sonuc['alici_tc'] = tc_m.group()
+    # Fiyat (rakam + opsiyonel TL/₺)
+    fiyat_m = re.search(r'(\d[\d.]*)\s*(?:tl|lira|₺)', metin.lower())
+    if fiyat_m:
+        try:
+            sonuc['fiyat'] = float(fiyat_m.group(1).replace('.', '').replace(',', '.'))
+        except Exception:
+            pass
+    # İşlem türü
+    if re.search(r'kira|kiralık|kiralama', metin.lower()):
+        sonuc['islem_turu'] = 'kira'
+    elif re.search(r'satış|satılık|satilik|sat[ıi]ş', metin.lower()):
+        sonuc['islem_turu'] = 'satis'
+    return sonuc
+
+
 def _regex_parse(metin: str) -> dict:
     """Basit regex tabanlı fallback — her zaman dict döner."""
     tel_match = re.search(r'(\+?90|0)?[5][0-9]{9}', metin.replace(' ', ''))

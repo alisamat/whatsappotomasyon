@@ -153,6 +153,20 @@ class YerGosterme(db.Model):
         }
 
 
+# ── Hızlı Form Token ─────────────────────────────────────────────────────────
+class HizliFormToken(db.Model):
+    """Web formu için tek kullanımlık token."""
+    __tablename__ = 'hizli_form_token'
+    id              = db.Column(db.Integer, primary_key=True)
+    token           = db.Column(db.String(64), unique=True, nullable=False)
+    user_id         = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    telefon         = db.Column(db.String(20), nullable=False)   # WhatsApp numarası
+    phone_number_id = db.Column(db.String(50), nullable=False)
+    access_token    = db.Column(db.Text, nullable=False)
+    kullanildi      = db.Column(db.Boolean, default=False)
+    olusturma       = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 # ── Kredi satın alma ──────────────────────────────────────────────────────────
 class KrediSatinAlma(db.Model):
     __tablename__ = 'kredi_satin_alma'

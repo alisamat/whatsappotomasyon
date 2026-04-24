@@ -15,6 +15,20 @@ depends_on = None
 
 
 def upgrade():
+    op.create_table('hizli_form_token',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('token', sa.String(length=64), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('telefon', sa.String(length=20), nullable=False),
+    sa.Column('phone_number_id', sa.String(length=50), nullable=False),
+    sa.Column('access_token', sa.Text(), nullable=False),
+    sa.Column('kullanildi', sa.Boolean(), nullable=True),
+    sa.Column('olusturma', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('token')
+    )
+
     op.create_table('emlakci_profil',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
@@ -70,3 +84,4 @@ def upgrade():
 def downgrade():
     op.drop_table('yer_gosterme')
     op.drop_table('emlakci_profil')
+    op.drop_table('hizli_form_token')

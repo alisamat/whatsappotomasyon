@@ -11,6 +11,7 @@ import Profil         from './components/Profil';
 import Gizlilik       from './components/Gizlilik';
 import EmlakProfil    from './components/EmlakProfil';
 import YerGostermeler from './components/YerGostermeler';
+import HizliForm      from './components/HizliForm';
 
 // ── Auth Context ─────────────────────────────────────────────────────────────
 export const AuthContext = createContext(null);
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/gizlilik"        element={<Gizlilik />} />
           <Route path="/emlak-profil"    element={<Koruma><EmlakProfil /></Koruma>} />
           <Route path="/yer-gostermeler" element={<Koruma><YerGostermeler /></Koruma>} />
+          <Route path="/hizli-form/:token" element={<HizliForm />} />
           <Route path="*"              element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
