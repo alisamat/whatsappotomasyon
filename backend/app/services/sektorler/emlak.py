@@ -112,7 +112,8 @@ class EmlakHandler(BaseSektorHandler):
             return False
 
         # Global komutlar
-        _RESET = ('iptal', 'sıfırla', 'sifirla', 'reset', 'yeni', 'kapat', 'dur', 'q', 'çık', 'cik', '0')
+        _RESET = ('iptal', 'sıfırla', 'sifirla', 'reset', 'yeni', 'yenile', 'başlat', 'baslat',
+                  'kapat', 'dur', 'q', 'çık', 'cik', '0')
         if _eslesir(ml, _RESET):
             session.update(yeni_session())
             self._hosgeldin_gonder(phone_number_id, access_token, telefon, session, user,
