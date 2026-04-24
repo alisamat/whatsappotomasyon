@@ -93,10 +93,9 @@ class EmlakHandler(BaseSektorHandler):
                 son = datetime.fromisoformat(session.get('son_mesaj', ''))
                 if datetime.utcnow() - son > timedelta(minutes=SESSION_TTL_DAKIKA):
                     session.update(yeni_session())
-                    wa.mesaj_gonder(phone_number_id, access_token, telefon,
-                                    f'⏰ {SESSION_TTL_DAKIKA} dakika işlem yapılmadığı için '
-                                    f'oturum sıfırlandı.\n\n'
-                                    + self._hosgeldin_metni())
+                    self._hosgeldin_gonder(
+                        phone_number_id, access_token, telefon, session, user,
+                        prefix=f'⏰ {SESSION_TTL_DAKIKA} dakika işlem yapılmadığı için oturum sıfırlandı.\n\n')
                     session['son_mesaj'] = datetime.utcnow().isoformat()
                     return False
             except Exception:
@@ -116,8 +115,8 @@ class EmlakHandler(BaseSektorHandler):
         _RESET = ('iptal', 'sıfırla', 'sifirla', 'reset', 'yeni', 'kapat', 'dur', 'q', 'çık', 'cik', '0')
         if _eslesir(ml, _RESET):
             session.update(yeni_session())
-            wa.mesaj_gonder(phone_number_id, access_token, telefon,
-                            '🔄 Sıfırlandı.\n\n' + self._hosgeldin_metni())
+            self._hosgeldin_gonder(phone_number_id, access_token, telefon, session, user,
+                                   prefix='🔄 Sıfırlandı.\n\n')
             return False
 
         if _eslesir(ml, ('durum', 'bakiye', 'kredi')):
@@ -126,7 +125,7 @@ class EmlakHandler(BaseSektorHandler):
             return False
 
         if _eslesir(ml, ('yardım', 'yardim', 'help', '?', 'nasıl', 'nasil')):
-            wa.mesaj_gonder(phone_number_id, access_token, telefon, self._hosgeldin_metni())
+            self._hosgeldin_gonder(phone_number_id, access_token, telefon, session, user)
             return False
 
         if adim == 'hosgeldin':
@@ -142,7 +141,7 @@ class EmlakHandler(BaseSektorHandler):
                 telefon, mesaj, msg_type, metin, session, phone_number_id, access_token, user)
         else:
             session['adim'] = 'hosgeldin'
-            wa.mesaj_gonder(phone_number_id, access_token, telefon, self._hosgeldin_metni())
+            self._hosgeldin_gonder(phone_number_id, access_token, telefon, session, user)
             return False
 
     # ── ADIM: hosgeldin ───────────────────────────────────────────────────────────
@@ -166,7 +165,7 @@ class EmlakHandler(BaseSektorHandler):
             session['adim'] = 'veri_toplama'
             return False
 
-        wa.mesaj_gonder(pid, tok, telefon, self._hosgeldin_metni())
+        self._hosgeldin_gonder(pid, tok, telefon, session, user)
         session['adim'] = 'veri_toplama'
 
         _SELAMLAR = {'merhaba', 'selam', 'sa', 'hey', 'hi', 'hello', 'günaydın', 'iyi gunler', 'iyi akşamlar'}
@@ -710,22 +709,50 @@ class EmlakHandler(BaseSektorHandler):
             satirlar.append('\n✅ Tüm zorunlu alanlar dolu!')
         return '\n'.join(satirlar)
 
-    def _hosgeldin_metni(self) -> str:
+    def _hosgeldin_metni(self, form_url: str = '') -> str:
         try:
             from flask import current_app
             frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
-            komut_satiri = f'\n\n📖 Komutlar: {frontend_url}/komutlar'
+            komut_url = f'{frontend_url}/komutlar'
         except Exception:
-            komut_satiri = '\n\nSıfırla: _kapat_'
+            komut_url = ''
+
+        form_satiri  = f'\n*2 —* 🌐 {form_url}' if form_url else ''
+        komut_satiri = f'\n\n📖 {komut_url}' if komut_url else ''
 
         return (
             '🏠 *Yer Gösterme Sözleşmesi*\n\n'
-            '3 yöntemden birini seçin:\n\n'
-            '*1 —* 👤 Kişi kartı · 📍 Konum · 💬 _kiralık 15000_ / _satılık 450000_\n'
-            '*2 —* 🔗 Web formu: _link_ yazın → PDF gelir\n'
-            '*3 —* ✍️ Tek mesaj: _Ali Veli 0532... Kadıköy kiralık 18000_'
+            '*1 —* 👤 Kişi kartı · 📍 Konum · 💬 _kiralık 15000_ / _satılık 450000_'
+            + form_satiri +
+            '\n*3 —* ✍️ _Ali Veli 0532... Kadıköy kiralık 18000_'
             + komut_satiri
         )
+
+    def _hosgeldin_gonder(self, pid, tok, telefon, session, user, prefix: str = ''):
+        """Form token'ı üret, URL'yi hoşgeldin metnine göm ve gönder."""
+        form_url = ''
+        try:
+            from app.models import db, HizliFormToken
+            from flask import current_app
+            import uuid
+            token_str = uuid.uuid4().hex
+            db.session.add(HizliFormToken(
+                token=token_str,
+                user_id=user.id,
+                telefon=telefon,
+                phone_number_id=pid,
+                access_token=tok,
+            ))
+            db.session.commit()
+            frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
+            form_url = f'{frontend_url}/hizli-form/{token_str}'
+        except Exception:
+            pass
+
+        metin = self._hosgeldin_metni(form_url)
+        if prefix:
+            metin = prefix + metin
+        wa.mesaj_gonder(pid, tok, telefon, metin)
 
     def _onay_metni(self, session: dict) -> str:
         alici    = session.get('alici', {})
