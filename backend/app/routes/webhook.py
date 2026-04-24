@@ -4,17 +4,11 @@ GET  /api/webhook  — Meta doğrulama
 POST /api/webhook  — Gelen mesajlar
 """
 import logging
-import requests as http_requests
-import os
 from flask import Blueprint, request, jsonify, current_app
 from app.models import db, SektorNumara
 from app.services import whatsapp_client as wa
 from app.services import kayit_akisi as kayit
 from app.services.sektorler import handler_al
-
-# OnMuhasebeci numaralarını bu backend'e yönlendir
-_ONMUH_FORWARD_IDS = set(os.environ.get('ONMUH_PHONE_NUMBER_IDS', '1038349959368585').split(','))
-_ONMUH_WEBHOOK_URL = os.environ.get('ONMUH_WEBHOOK_URL', 'https://determined-healing-production.up.railway.app/api/whatsapp/webhook')
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('webhook', __name__, url_prefix='/api/webhook')
@@ -66,15 +60,6 @@ def gelen_mesaj():
         phone_number_id = value.get('metadata', {}).get('phone_number_id', '')
         mesaj           = messages[0]
         gonderen_no     = mesaj.get('from', '')
-
-        # OnMuhasebeci numaralarını ilgili backend'e yönlendir
-        if phone_number_id in _ONMUH_FORWARD_IDS:
-            logger.info(f'[Webhook] OnMuhasebeci yönlendirme: {phone_number_id} → {_ONMUH_WEBHOOK_URL}')
-            try:
-                http_requests.post(_ONMUH_WEBHOOK_URL, json=data, timeout=5)
-            except Exception as fwd_err:
-                logger.warning(f'[Webhook] Yönlendirme hatası: {fwd_err}')
-            return jsonify({'status': 'ok'}), 200
 
         # Sektör + access_token bul
         sn = SektorNumara.query.filter_by(phone_number_id=phone_number_id, aktif=True).first()
