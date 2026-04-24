@@ -336,7 +336,7 @@ class EmlakHandler(BaseSektorHandler):
                             '❌ PDF oluşturulurken hata oluştu. Tekrar deneyin.')
             return False
 
-        token_str = kaydet(pdf_bytes)
+        token_str = kaydet(pdf_bytes, 'pdf')
         base_url  = current_app.config.get('BASE_URL', '').rstrip('/')
         pdf_url   = f'{base_url}/api/belge/{token_str}'
 
@@ -386,11 +386,30 @@ class EmlakHandler(BaseSektorHandler):
         except Exception as e:
             logger.error(f'[Emlak] Kayıt hatası: {e}', exc_info=True)
 
-        alici_adi = session.get('alici', {}).get('ad_soyad', 'Alıcı')
-        wa.belge_gonder(pid, tok, telefon, pdf_url,
-                        f'yer_gosterme_{date.today().strftime("%Y%m%d")}.pdf',
-                        f'✅ {alici_adi} için Yer Gösterme Sözleşmesi hazır!')
-        logger.info(f'[Emlak] Belge gönderildi → {telefon}')
+        alici_adi   = session.get('alici', {}).get('ad_soyad', 'Alıcı')
+        belge_fmt   = getattr(profil, 'belge_format', 'pdf') or 'pdf'
+        dosya_adi   = f'yer_gosterme_{date.today().strftime("%Y%m%d")}.pdf'
+        baslik_mesaj = f'✅ {alici_adi} için Yer Gösterme Sözleşmesi hazır!'
+
+        if belge_fmt in ('pdf', 'ikisi'):
+            wa.belge_gonder(pid, tok, telefon, pdf_url, dosya_adi, baslik_mesaj)
+
+        if belge_fmt in ('resim', 'ikisi'):
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+                pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2))
+                png_bytes = pix.tobytes('png')
+                png_token = kaydet(png_bytes, 'png')
+                png_url   = f'{base_url}/api/belge/{png_token}'
+                caption   = baslik_mesaj if belge_fmt == 'resim' else ''
+                wa.resim_gonder(pid, tok, telefon, png_url, caption)
+            except Exception as e:
+                logger.error(f'[Emlak] PDF→resim dönüşüm hatası: {e}')
+                if belge_fmt == 'resim':
+                    wa.belge_gonder(pid, tok, telefon, pdf_url, dosya_adi, baslik_mesaj)
+
+        logger.info(f'[Emlak] Belge gönderildi ({belge_fmt}) → {telefon}')
         return True
 
     # ── MESAJ METİNLERİ ─────────────────────────────────────────────────────────

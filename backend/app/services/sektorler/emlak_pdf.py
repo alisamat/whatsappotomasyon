@@ -91,12 +91,49 @@ def _uret(session: dict, profil, yer_gosterme_id: int, stil: str) -> bytes:
     tasinmaz_parsel = tasinmaz.get('parsel') or '-'
     tasinmaz_alan  = tasinmaz.get('alan_m2') or '-'
 
+    # ── Profil Alanları ──
+    profil_logo     = getattr(profil, 'logo_base64', '') if profil else ''
+    profil_slogan   = getattr(profil, 'slogan', '') if profil else ''
+    profil_web      = getattr(profil, 'web_sitesi', '') if profil else ''
+    profil_ig       = getattr(profil, 'instagram', '') if profil else ''
+    profil_fb       = getattr(profil, 'facebook', '') if profil else ''
+    profil_ttyb     = getattr(profil, 'ttyb_no', '') if profil else ''
+    profil_oda      = getattr(profil, 'oda_adi', '') if profil else ''
+    profil_oda_sic  = getattr(profil, 'oda_sicil_no', '') if profil else ''
+
     hikaye = []
 
+    # ── Logo yardımcısı ──
+    def logo_flowable():
+        if not profil_logo or not profil_logo.startswith('data:image'):
+            return None
+        try:
+            import base64
+            header_b64 = profil_logo.split(',', 1)[1]
+            logo_bytes = base64.b64decode(header_b64)
+            logo_buf = io.BytesIO(logo_bytes)
+            logo_img = RLImage(logo_buf, width=2.5*cm, height=2.0*cm, kind='proportional')
+            return logo_img
+        except Exception:
+            return None
+
     # ── BAŞLIK ──
+    logo = logo_flowable()
     if stil == 'modern':
-        header_data = [[Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil)],
-                       [Paragraph(f'Sözleşme No: {sozno}  ·  Tarih: {bugun}', alt_baslik_stil)]]
+        if logo:
+            header_inner = Table(
+                [[logo, Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil)]],
+                colWidths=[3*cm, W - 7*cm]
+            )
+            header_inner.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ]))
+            header_data = [[header_inner],
+                           [Paragraph(f'Sözleşme No: {sozno}  ·  Tarih: {bugun}', alt_baslik_stil)]]
+        else:
+            header_data = [[Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil)],
+                           [Paragraph(f'Sözleşme No: {sozno}  ·  Tarih: {bugun}', alt_baslik_stil)]]
         header_tablo = Table(header_data, colWidths=[W - 4*cm])
         header_tablo.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,-1), header_bg),
@@ -106,7 +143,18 @@ def _uret(session: dict, profil, yer_gosterme_id: int, stil: str) -> bytes:
         ]))
         hikaye.append(header_tablo)
     else:
-        hikaye.append(Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil))
+        if logo:
+            logo_baslik_row = Table(
+                [[logo, Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil)]],
+                colWidths=[3*cm, W - 7*cm]
+            )
+            logo_baslik_row.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ]))
+            hikaye.append(logo_baslik_row)
+        else:
+            hikaye.append(Paragraph('TAŞINMAZ YER GÖSTERME SÖZLEŞMESİ', baslik_stil))
         hikaye.append(Paragraph(f'Sözleşme No: {sozno}  ·  Tarih: {bugun}', alt_baslik_stil))
         hikaye.append(HRFlowable(width='100%', thickness=1.5, color=accent, spaceAfter=8))
 
@@ -134,14 +182,17 @@ def _uret(session: dict, profil, yer_gosterme_id: int, stil: str) -> bytes:
     profil_isletme = getattr(profil, 'isletme_adi', '') if profil else ''
     profil_adres  = getattr(profil, 'is_adresi', '-') if profil else '-'
     profil_tel    = getattr(profil, 'telefon', '-') if profil else '-'
-    profil_lisans = getattr(profil, 'lisans_no', '-') if profil else '-'
-    hikaye.append(tablo_olustur([
+    danisман_satirlari = [
         ['Ad Soyad', profil_ad],
         ['İşletme Adı', profil_isletme or '-'],
         ['İş Adresi', profil_adres or '-'],
         ['Telefon', profil_tel or '-'],
-        ['Yetki Belgesi No', profil_lisans or '-'],
-    ]))
+    ]
+    if profil_ttyb:
+        danisман_satirlari.append(['TTYB No', profil_ttyb])
+    if profil_oda:
+        danisман_satirlari.append(['Bağlı Olduğu Oda', profil_oda + (f'  |  Sicil: {profil_oda_sic}' if profil_oda_sic else '')])
+    hikaye.append(tablo_olustur(danisман_satirlari))
     hikaye.append(Spacer(1, 0.3*cm))
     hikaye.append(Paragraph('1.2 Kiracı Adayı / Alıcı Adayı', normal_stil))
     tc_gizli = ''
@@ -251,6 +302,24 @@ def _uret(session: dict, profil, yer_gosterme_id: int, stil: str) -> bytes:
         ('TOPPADDING', (0, 0), (-1, -1), 4),
     ]))
     hikaye.append(imza_tablo)
+
+    # ── MARKA / İLETİŞİM FOOTER ──
+    footer_parcalar = []
+    if profil_slogan:
+        footer_parcalar.append(f'"{profil_slogan}"')
+    if profil_web:
+        footer_parcalar.append(profil_web)
+    if profil_ig:
+        footer_parcalar.append(f'IG: {profil_ig}')
+    if profil_fb:
+        footer_parcalar.append(f'FB: {profil_fb}')
+    if footer_parcalar:
+        hikaye.append(Spacer(1, 0.3*cm))
+        hikaye.append(HRFlowable(width='100%', thickness=0.3, color=colors.HexColor('#e2e8f0')))
+        hikaye.append(Paragraph('  ·  '.join(footer_parcalar),
+                                 ParagraphStyle('footer', parent=styles['Normal'],
+                                                fontSize=7.5, textColor=colors.HexColor('#94a3b8'),
+                                                alignment=1, spaceAfter=0)))
 
     # ── FOTOĞRAFLAR (ayrı sayfa) ──
     if session.get('fotografli_mi', True) and session.get('fotograflar'):

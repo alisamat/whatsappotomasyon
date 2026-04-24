@@ -78,8 +78,22 @@ def kredi_yetersiz_bildir(user: User, gerekli: float,
     wa.mesaj_gonder(phone_number_id, access_token, user.telefon, mesaj)
 
 
+def abonelik_kontrol(user: User, miktar: float = 1) -> str:
+    """
+    Abonelik ve kredi durumunu kontrol et.
+    Döner: 'ok' | 'paket_bitti' | 'kredi_yetersiz'
+    """
+    if not user.paket_bitis or user.paket_bitis < datetime.utcnow():
+        return 'paket_bitti'
+    if user.kredi < miktar:
+        return 'kredi_yetersiz'
+    return 'ok'
+
+
 def kredi_dus(user: User, miktar: float, aciklama: str = '') -> bool:
-    """Kullanıcının kreisinden düş. Yetmiyorsa False döner."""
+    """Kullanıcının kredisinden düş. Yetmiyorsa veya paket bittiyse False döner."""
+    if not user.paket_bitis or user.paket_bitis < datetime.utcnow():
+        return False
     if user.kredi < miktar:
         return False
     user.kredi -= miktar

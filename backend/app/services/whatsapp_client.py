@@ -73,6 +73,25 @@ def medya_indir(media_id: str, access_token: str) -> bytes | None:
         return None
 
 
+def resim_gonder(phone_number_id: str, access_token: str, alici_no: str,
+                 resim_url: str, aciklama: str = '') -> bool:
+    """PNG/JPG resim gönder (hosted URL üzerinden)."""
+    url = f'{GRAPH_URL}/{phone_number_id}/messages'
+    payload = {
+        'messaging_product': 'whatsapp',
+        'to': alici_no,
+        'type': 'image',
+        'image': {'link': resim_url, 'caption': aciklama},
+    }
+    try:
+        r = requests.post(url, json=payload, headers=_headers(access_token), timeout=15)
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f'[WA] Resim gönderilemedi {alici_no}: {e}')
+        return False
+
+
 def konum_mesaji_isle(location: dict) -> dict:
     """Gelen konum objesini normalize et."""
     return {
