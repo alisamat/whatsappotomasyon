@@ -3,16 +3,19 @@ EMLAK SEKTÖRÜ — Yer Gösterme Sözleşmesi
 Sadeleştirilmiş 3-adım akış: hosgeldin → veri_toplama → onay_bekleniyor
 """
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 from app.services.sektorler.base import BaseSektorHandler
 from app.services import whatsapp_client as wa
 
 logger = logging.getLogger(__name__)
 
+SESSION_TTL_SAAT = 24  # Bu süre içinde mesaj gelmezse session sıfırlanır
+
 
 def yeni_session() -> dict:
     return {
         'adim': 'hosgeldin',
+        'son_mesaj': datetime.utcnow().isoformat(),
         'sablon_no': 1,
         'fotograflar': [],
         'konum': None,
@@ -51,6 +54,24 @@ class EmlakHandler(BaseSektorHandler):
         msg_type = mesaj.get('type', '')
         metin    = mesaj.get('text', {}).get('body', '').strip() if msg_type == 'text' else ''
         ml       = metin.lower()
+
+        # TTL kontrolü — son mesajdan bu yana 24 saat geçtiyse sıfırla
+        if adim != 'hosgeldin':
+            try:
+                son = datetime.fromisoformat(session.get('son_mesaj', ''))
+                if datetime.utcnow() - son > timedelta(hours=SESSION_TTL_SAAT):
+                    session.update(yeni_session())
+                    wa.mesaj_gonder(phone_number_id, access_token, telefon,
+                                    f'⏰ Oturumunuz {SESSION_TTL_SAAT} saat işlem yapılmadığı için '
+                                    f'sona erdi. Yeniden başlıyoruz.\n\n'
+                                    + self._hosgeldin_metni())
+                    session['son_mesaj'] = datetime.utcnow().isoformat()
+                    return False
+            except Exception:
+                pass
+
+        # Her mesajda son_mesaj güncelle
+        session['son_mesaj'] = datetime.utcnow().isoformat()
 
         # Global komutlar
         if ml in ('iptal', 'sıfırla', 'reset', 'yeni', '0'):
