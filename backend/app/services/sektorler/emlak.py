@@ -699,19 +699,20 @@ class EmlakHandler(BaseSektorHandler):
         return '\n'.join(satirlar)
 
     def _hosgeldin_metni(self) -> str:
+        try:
+            from flask import current_app
+            frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
+            komut_satiri = f'\n\n📖 Komutlar: {frontend_url}/komutlar'
+        except Exception:
+            komut_satiri = '\n\nSıfırla: _kapat_'
+
         return (
             '🏠 *Yer Gösterme Sözleşmesi*\n\n'
-            '📱 *WhatsApp ile* (sıra önemli değil)\n'
-            '· 👤 Kişi kartı gönderin\n'
-            '· 📍 Konum paylaşın veya adres yazın\n'
-            '· 💬 _kiralık 15000_ · _satılık 500000_\n'
-            '· 📸 Fotoğraf (isteğe bağlı, max 4)\n\n'
-            '🔗 *Web formu:* _link_ yazın\n\n'
-            '✍️ *Tek mesajda:*\n'
-            '_Ali Veli 05321112222 Kadıköy kiralık 18000 komisyon 1 ay_\n\n'
-            '─────────────────\n'
-            'Şablon: 1 klasik · 2 modern · 3 minimalist\n'
-            'Sıfırla: _kapat_'
+            '3 yöntemden birini seçin:\n\n'
+            '*1 —* 👤 Kişi kartı · 📍 Konum · 💬 _kiralık 15000_ / _satılık 450000_\n'
+            '*2 —* 🔗 Web formu: _link_ yazın → PDF gelir\n'
+            '*3 —* ✍️ Tek mesaj: _Ali Veli 0532... Kadıköy kiralık 18000_'
+            + komut_satiri
         )
 
     def _onay_metni(self, session: dict) -> str:
