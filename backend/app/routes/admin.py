@@ -77,6 +77,31 @@ def seed():
     return jsonify({'success': True, 'id': sn.id}), 201
 
 
+@bp.route('/seed', methods=['GET'])
+def seed_read():
+    """SektorNumara kaydını oku (access_token dahil)."""
+    if request.headers.get('X-Admin-Key') != current_app.config.get('SECRET_KEY'):
+        return jsonify({'success': False}), 403
+    phone_number_id = request.args.get('phone_number_id')
+    if phone_number_id:
+        sn = SektorNumara.query.filter_by(phone_number_id=phone_number_id).first()
+        if not sn:
+            return jsonify({'success': False, 'message': 'Kayıt bulunamadı.'}), 404
+        return jsonify({'success': True, 'kayit': {
+            'id': sn.id, 'phone_number_id': sn.phone_number_id,
+            'wa_no': sn.wa_no, 'sektor': sn.sektor,
+            'aciklama': sn.aciklama, 'aktif': sn.aktif,
+            'access_token': sn.access_token,
+        }})
+    numaralar = SektorNumara.query.all()
+    return jsonify({'success': True, 'kayitlar': [{
+        'id': n.id, 'phone_number_id': n.phone_number_id,
+        'wa_no': n.wa_no, 'sektor': n.sektor,
+        'aciklama': n.aciklama, 'aktif': n.aktif,
+        'access_token': n.access_token,
+    } for n in numaralar]})
+
+
 @bp.route('/seed', methods=['PATCH'])
 def seed_update():
     """Mevcut SektorNumara kaydını güncelle (access_token vb.)."""
