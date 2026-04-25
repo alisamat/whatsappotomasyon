@@ -144,7 +144,7 @@ export default function Profil() {
             ))}
 
             <button type="submit" disabled={sifreKaydediliyor}
-              style={{ background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8,
+              style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 8,
                        padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               {sifreKaydediliyor ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
             </button>
