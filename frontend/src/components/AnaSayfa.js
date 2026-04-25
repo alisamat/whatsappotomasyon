@@ -77,10 +77,10 @@ export default function AnaSayfa() {
       </div>
 
       {/* KREDİ */}
-      <div style={{ background: '#0f172a', borderRadius: 16, padding: '32px 40px', textAlign: 'center', color: '#fff' }}>
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 16, padding: '32px 40px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 12 }}>💳 Kredi Sistemi</div>
-        <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 24, maxWidth: 480, margin: '0 auto 24px' }}>
-          Kayıt olana <strong style={{ color: WA }}>10 ücretsiz kredi</strong> verilir.
+        <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, maxWidth: 480, margin: '0 auto 24px' }}>
+          Kayıt olana <strong style={{ color: '#15803d' }}>10 ücretsiz kredi</strong> verilir.
           İhtiyacınıza göre ek kredi satın alabilirsiniz.
           Her sektörün işlem maliyeti farklıdır.
         </p>
