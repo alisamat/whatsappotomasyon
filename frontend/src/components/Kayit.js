@@ -18,6 +18,7 @@ export default function Kayit() {
   const [form, setForm] = useState({
     ad_soyad: '', email: '', telefon: '', sifre: '', sektor: 'emlak',
   });
+  const [kvkkOnay, setKvkkOnay] = useState(false);
   const [hata, setHata]    = useState('');
   const [yukleniyor, setY] = useState(false);
 
@@ -32,6 +33,7 @@ export default function Kayit() {
 
   const gonder = async e => {
     e.preventDefault();
+    if (!kvkkOnay) { setHata('Devam etmek için KVKK metnini onaylamanız gerekiyor.'); return; }
     setHata(''); setY(true);
     try {
       const payload = { ...form };
@@ -91,9 +93,24 @@ export default function Kayit() {
             </select>
           </div>
 
-          <button type="submit" disabled={yukleniyor}
-            style={{ width:'100%', background:'#25D366', color:'#fff', border:'none', borderRadius:8,
-                     padding:'12px', fontSize:15, fontWeight:700, cursor:'pointer' }}>
+          {/* KVKK Onayı */}
+          <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:18 }}>
+            <input type="checkbox" id="kvkk" checked={kvkkOnay}
+              onChange={e => setKvkkOnay(e.target.checked)}
+              style={{ marginTop:2, accentColor:'#25D366', width:16, height:16, flexShrink:0 }} />
+            <label htmlFor="kvkk" style={{ fontSize:13, color:'#374151', lineHeight:1.5, cursor:'pointer' }}>
+              <Link to="/gizlilik" target="_blank"
+                style={{ color:'#25D366', fontWeight:600, textDecoration:'none' }}>
+                KVKK Aydınlatma Metni
+              </Link>'ni okudum, kişisel verilerimin işlenmesine onay veriyorum.
+            </label>
+          </div>
+
+          <button type="submit" disabled={yukleniyor || !kvkkOnay}
+            style={{ width:'100%', background: kvkkOnay ? '#25D366' : '#94a3b8',
+                     color:'#fff', border:'none', borderRadius:8,
+                     padding:'12px', fontSize:15, fontWeight:700,
+                     cursor: kvkkOnay ? 'pointer' : 'not-allowed' }}>
             {yukleniyor ? 'Kaydediliyor...' : 'Kayıt Ol'}
           </button>
         </form>

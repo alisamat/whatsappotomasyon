@@ -202,6 +202,14 @@ export default function HizliForm() {
           </div>
         )}
 
+        {/* KVKK Bilgilendirme */}
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+                      padding: '10px 14px', fontSize: 12, color: '#92400e', marginTop: 16, lineHeight: 1.6 }}>
+          <strong>Kişisel Veri Bildirimi:</strong> Bu form aracılığıyla girilen alıcı/kiracı bilgileri
+          yalnızca yer gösterme sözleşmesi belgesi oluşturmak amacıyla işlenmekte ve
+          hizmet sağlayıcı emlakçıya iletilmektedir (KVKK md. 5/2-c).
+        </div>
+
         <form onSubmit={gonder}>
           {/* Alıcı */}
           <Baslik>👤 Alıcı / Kiracı Adayı</Baslik>
